@@ -1,0 +1,6 @@
+{
+  "name": "SubZap",
+  "description": "Financial self-defense SaaS against subscription wallet bleed with cloud authentication, client-side AES zero-knowledge encryption, personalized budget gauges, and predictive renewal analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

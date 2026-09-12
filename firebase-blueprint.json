@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with onboarding financial goals and budget preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "averageMonthlyExpense": { "type": "number" },
+        "financialGoal": { 
+          "type": "string", 
+          "enum": ["Relaxed/Informational", "Moderate Tracking", "Strict/Aggressive Budgeting"] 
+        },
+        "targetMonthlyBudget": { "type": "number" },
+        "identity": { "type": "string" },
+        "authProvider": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "fullName", "targetMonthlyBudget", "financialGoal"]
+    },
+    "EncryptedSubscription": {
+      "title": "EncryptedSubscription",
+      "description": "Client-side encrypted subscription record ensuring zero-knowledge privacy",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "nameEnc": { "type": "string" },
+        "costEnc": { "type": "string" },
+        "nextRenewalDateEnc": { "type": "string" },
+        "trialExpiryDateEnc": { "type": "string" },
+        "notesEnc": { "type": "string" },
+        "cancellationUrlEnc": { "type": "string" },
+        "category": { "type": "string" },
+        "billingCycle": { "type": "string" },
+        "currency": { "type": "string" },
+        "domain": { "type": "string" },
+        "isPaused": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "nameEnc", "costEnc", "nextRenewalDateEnc", "category", "billingCycle"]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": { "$ref": "UserProfile" },
+      "description": "User onboarding profile and budget limits"
+    },
+    "/users/{userId}/subscriptions/{subscriptionId}": {
+      "schema": { "$ref": "EncryptedSubscription" },
+      "description": "Private client-encrypted subscriptions belonging to user"
+    }
+  }
+}

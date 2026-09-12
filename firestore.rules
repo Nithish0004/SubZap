@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global helper functions
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Profiles Collection: /profiles/{userId}
+    match /profiles/{userId} {
+      function isValidProfile(data) {
+        return data.userId is string 
+          && data.userId == request.auth.uid
+          && data.fullName is string 
+          && data.fullName.size() > 0 
+          && data.fullName.size() <= 100
+          && data.targetMonthlyBudget is number 
+          && data.targetMonthlyBudget >= 0
+          && data.financialGoal is string
+          && (data.financialGoal == 'Relaxed/Informational' || data.financialGoal == 'Moderate Tracking' || data.financialGoal == 'Strict/Aggressive Budgeting');
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if false; // Profiles are queried directly by document ID
+      allow create: if isOwner(userId) 
+        && isValidId(userId)
+        && isValidProfile(request.resource.data);
+      allow update: if isOwner(userId) 
+        && isValidId(userId)
+        && isValidProfile(request.resource.data)
+        && request.resource.data.userId == resource.data.userId;
+      allow delete: if isOwner(userId) && isValidId(userId);
+    }
+
+    // Subscriptions Subcollection: /users/{userId}/subscriptions/{subscriptionId}
+    match /users/{userId}/subscriptions/{subscriptionId} {
+      function isValidSubscription(data) {
+        return data.id is string
+          && data.userId is string
+          && data.userId == request.auth.uid
+          && data.nameEnc is string
+          && data.nameEnc.size() > 0
+          && data.nameEnc.size() <= 2048
+          && data.costEnc is string
+          && data.costEnc.size() > 0
+          && data.costEnc.size() <= 1024
+          && data.nextRenewalDateEnc is string
+          && data.nextRenewalDateEnc.size() > 0
+          && data.nextRenewalDateEnc.size() <= 1024
+          && data.category is string
+          && data.category.size() <= 64
+          && data.billingCycle is string
+          && (data.billingCycle == 'monthly' || data.billingCycle == 'yearly' || data.billingCycle == 'weekly');
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(subscriptionId)
+        && isValidSubscription(request.resource.data);
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(subscriptionId)
+        && isValidSubscription(request.resource.data)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.id == resource.data.id;
+      allow delete: if isOwner(userId) && isValidId(userId) && isValidId(subscriptionId);
+    }
+  }
+}
