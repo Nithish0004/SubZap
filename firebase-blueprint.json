@@ -42,6 +42,22 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "userId", "nameEnc", "costEnc", "nextRenewalDateEnc", "category", "billingCycle"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "User credential record for password-based and phone-based authentication",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "identity": { "type": "string" },
+        "identityType": { "type": "string", "enum": ["email", "phone"] },
+        "passwordHash": { "type": "string" },
+        "salt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "fullName", "identity", "identityType", "passwordHash", "salt"]
     }
   },
   "firestore": {
@@ -52,6 +68,10 @@
     "/users/{userId}/subscriptions/{subscriptionId}": {
       "schema": { "$ref": "EncryptedSubscription" },
       "description": "Private client-encrypted subscriptions belonging to user"
+    },
+    "/accounts/{accountId}": {
+      "schema": { "$ref": "UserAccount" },
+      "description": "Registered user credentials and identity mapping"
     }
   }
 }

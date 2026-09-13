@@ -30,13 +30,14 @@ import { Footer } from './components/Footer';
 import { AuthGatewayModal } from './components/AuthGatewayModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { AuthLoadingSkeleton } from './components/AuthLoadingSkeleton';
+import { DataVaultModal } from './components/DataVaultModal';
 
 export default function App() {
   const { user, userSecretKey, isLoading, needsOnboarding } = useAuth();
 
   // 1. Core Subscriptions State (Zero-latency cache initialized immediately)
   const [subscriptions, setSubscriptions] = useState<Subscription[]>(() => {
-    return getStoredSubscriptions();
+    return getStoredSubscriptions(user?.uid);
   });
 
   // Active view tab: analytics, subscriptions, calendar
@@ -49,6 +50,7 @@ export default function App() {
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
   const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [isDataVaultOpen, setIsDataVaultOpen] = useState(false);
 
   // Web Notification & In-app alerts state
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
@@ -61,24 +63,58 @@ export default function App() {
     let isMounted = true;
     const syncFromCloud = async () => {
       try {
+        // Check local user-scoped storage immediately
+        const localUserSubs = getStoredSubscriptions(user.uid);
+        const guestSubs = getStoredSubscriptions();
+
+        // If user already had subscriptions locally, show them immediately
+        if (localUserSubs && localUserSubs.length > 0) {
+          if (isMounted) setSubscriptions(localUserSubs);
+        } else if (guestSubs && guestSubs.length > 0) {
+          // Migrate guest data into this authenticated account
+          if (isMounted) setSubscriptions(guestSubs);
+          saveStoredSubscriptions(guestSubs, user.uid);
+          for (const sub of guestSubs) {
+            await saveUserSubscriptionToCloud(user.uid, userSecretKey, sub);
+          }
+        }
+
+        // Fetch cloud Firestore documents
         const cloudSubs = await fetchUserSubscriptionsFromCloud(user.uid, userSecretKey);
         if (!isMounted) return;
 
-        if (cloudSubs.length > 0) {
+        if (cloudSubs && cloudSubs.length > 0) {
           setSubscriptions(cloudSubs);
+          saveStoredSubscriptions(cloudSubs, user.uid);
         } else {
-          // If fresh cloud account with no subscriptions, seed initial INR defaults
-          const seeded = await seedInitialSubscriptionsToCloud(
-            user.uid,
-            userSecretKey,
-            SEED_SUBSCRIPTIONS
-          );
-          if (isMounted) {
-            setSubscriptions(seeded);
+          // Cloud has no documents yet for this user.
+          // Check if the user has locally entered subscriptions to push up to the cloud!
+          const existingToPush = (localUserSubs && localUserSubs.length > 0) 
+            ? localUserSubs 
+            : (guestSubs && guestSubs.length > 0 ? guestSubs : null);
+
+          if (existingToPush && existingToPush.length > 0) {
+            for (const item of existingToPush) {
+              await saveUserSubscriptionToCloud(user.uid, userSecretKey, item);
+            }
+          } else {
+            // Truly fresh account with no local subscriptions: seed defaults
+            const seeded = await seedInitialSubscriptionsToCloud(
+              user.uid,
+              userSecretKey,
+              SEED_SUBSCRIPTIONS
+            );
+            if (isMounted) {
+              setSubscriptions(seeded);
+            }
           }
         }
       } catch (err) {
         console.warn('Cloud sync error, using local encrypted cache:', err);
+        const fallback = getStoredSubscriptions(user.uid);
+        if (fallback.length > 0 && isMounted) {
+          setSubscriptions(fallback);
+        }
       }
     };
 
@@ -115,6 +151,7 @@ export default function App() {
     id?: string
   ) => {
     let targetSub: Subscription;
+    let nextList: Subscription[];
 
     if (id) {
       const existing = subscriptions.find((s) => s.id === id);
@@ -126,9 +163,7 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       } as Subscription;
 
-      setSubscriptions((prev) =>
-        prev.map((item) => (item.id === id ? targetSub : item))
-      );
+      nextList = subscriptions.map((item) => (item.id === id ? targetSub : item));
     } else {
       targetSub = {
         ...data,
@@ -136,16 +171,18 @@ export default function App() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      setSubscriptions((prev) => [targetSub, ...prev]);
+      nextList = [targetSub, ...subscriptions];
     }
 
+    setSubscriptions(nextList);
     setEditingSubscription(null);
+
+    // Save locally immediately under active user
+    saveStoredSubscriptions(nextList, user?.uid);
 
     // Encrypt client-side and push to Firestore
     if (user) {
       await saveUserSubscriptionToCloud(user.uid, userSecretKey, targetSub);
-    } else {
-      saveStoredSubscriptions(subscriptions);
     }
   };
 
@@ -155,14 +192,13 @@ export default function App() {
     if (!sub) return;
 
     const updated = { ...sub, isPaused: !sub.isPaused, updatedAt: new Date().toISOString() };
-    setSubscriptions((prev) =>
-      prev.map((item) => (item.id === id ? updated : item))
-    );
+    const nextList = subscriptions.map((item) => (item.id === id ? updated : item));
+    setSubscriptions(nextList);
+
+    saveStoredSubscriptions(nextList, user?.uid);
 
     if (user) {
       await saveUserSubscriptionToCloud(user.uid, userSecretKey, updated);
-    } else {
-      saveStoredSubscriptions(subscriptions);
     }
   };
 
@@ -191,6 +227,7 @@ export default function App() {
     );
     setSubscriptions(updatedList);
     setSimulatedCancelledIds(new Set());
+    saveStoredSubscriptions(updatedList, user?.uid);
 
     if (user) {
       for (const sub of updatedList) {
@@ -204,10 +241,10 @@ export default function App() {
   // Handler: Apply Simulation as Delete
   const handleApplySimulatedDelete = async () => {
     const toDeleteIds: string[] = Array.from(simulatedCancelledIds);
-    setSubscriptions((prev) =>
-      prev.filter((sub) => !simulatedCancelledIds.has(sub.id))
-    );
+    const updatedList = subscriptions.filter((sub) => !simulatedCancelledIds.has(sub.id));
+    setSubscriptions(updatedList);
     setSimulatedCancelledIds(new Set());
+    saveStoredSubscriptions(updatedList, user?.uid);
 
     if (user) {
       for (const id of toDeleteIds) {
@@ -218,12 +255,15 @@ export default function App() {
 
   // Handler: Execute Confirmed Deletion
   const handleDeleteSubscription = async (id: string) => {
-    setSubscriptions((prev) => prev.filter((s) => s.id !== id));
+    const nextList = subscriptions.filter((s) => s.id !== id);
+    setSubscriptions(nextList);
     setSimulatedCancelledIds((prev) => {
       const next = new Set(prev);
       next.delete(id);
       return next;
     });
+
+    saveStoredSubscriptions(nextList, user?.uid);
 
     if (user) {
       await deleteUserSubscriptionFromCloud(user.uid, id);
@@ -265,6 +305,7 @@ export default function App() {
         }}
         onOpenNotifications={() => setIsNotificationModalOpen(true)}
         onResetData={handleResetData}
+        onOpenDataVault={() => setIsDataVaultOpen(true)}
         unreadAlertsCount={alerts.length}
         totalSubsCount={subscriptions.length}
         currentMonthlyBurnINR={metrics.totalMonthlyBurn}
@@ -351,6 +392,13 @@ export default function App() {
         alerts={alerts}
         subscriptions={subscriptions}
         onTogglePause={handleTogglePause}
+      />
+
+      {/* Project Data & Cloud Vault Inspector Modal */}
+      <DataVaultModal
+        isOpen={isDataVaultOpen}
+        onClose={() => setIsDataVaultOpen(false)}
+        subscriptions={subscriptions}
       />
     </div>
   );

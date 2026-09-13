@@ -23,11 +23,18 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
   currentMonthlyBurnINR,
   compact = false,
 }) => {
-  const { userProfile, completeOnboarding } = useAuth();
+  const { userProfile, completeOnboarding, setNeedsOnboarding } = useAuth();
   const { formatBaseINR, activeCurrency, symbols } = useCurrency();
 
   const [isEditing, setIsEditing] = useState(false);
   const [newBudget, setNewBudget] = useState(userProfile?.targetMonthlyBudget?.toString() || '5000');
+
+  // Reactively sync when userProfile loads or changes
+  React.useEffect(() => {
+    if (userProfile?.targetMonthlyBudget) {
+      setNewBudget(userProfile.targetMonthlyBudget.toString());
+    }
+  }, [userProfile?.targetMonthlyBudget]);
 
   const targetBudget = userProfile?.targetMonthlyBudget || 5000;
   const goal = userProfile?.financialGoal || 'Moderate Tracking';
@@ -43,11 +50,11 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
 
   const handleSaveBudget = async () => {
     const val = parseFloat(newBudget);
-    if (!isNaN(val) && val > 0 && userProfile) {
+    if (!isNaN(val) && val > 0) {
       await completeOnboarding({
-        fullName: userProfile.fullName,
-        averageMonthlyExpense: userProfile.averageMonthlyExpense,
-        financialGoal: userProfile.financialGoal,
+        fullName: userProfile?.fullName || 'SubZap Member',
+        averageMonthlyExpense: userProfile?.averageMonthlyExpense || 45000,
+        financialGoal: userProfile?.financialGoal || 'Moderate Tracking',
         targetMonthlyBudget: val,
       });
       setIsEditing(false);
@@ -136,13 +143,23 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
 
         {/* Quick Edit Budget Trigger */}
         {!isEditing ? (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors self-start sm:self-auto cursor-pointer"
-          >
-            <Edit3 className="w-3 h-3" />
-            <span>Edit Target</span>
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => setNeedsOnboarding(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 bg-transparent rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+              title="Edit Profile, Living Expenses & Strategy"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>Edit Profile</span>
+            </button>
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+            >
+              <Edit3 className="w-3 h-3" />
+              <span>Edit Target</span>
+            </button>
+          </div>
         ) : (
           <div className="flex items-center gap-1.5 self-start sm:self-auto">
             <input

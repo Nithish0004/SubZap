@@ -116,11 +116,18 @@ export const SEED_SUBSCRIPTIONS: Subscription[] = [
   },
 ];
 
-export function getStoredSubscriptions(): Subscription[] {
+export function getStoredSubscriptions(userId?: string): Subscription[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw: string | null = null;
+    if (userId) {
+      raw = localStorage.getItem(`${STORAGE_KEY}_${userId}`);
+    }
     if (!raw) {
-      saveStoredSubscriptions(SEED_SUBSCRIPTIONS);
+      raw = localStorage.getItem(STORAGE_KEY);
+    }
+
+    if (!raw) {
+      saveStoredSubscriptions(SEED_SUBSCRIPTIONS, userId);
       return SEED_SUBSCRIPTIONS;
     }
     const parsed = JSON.parse(raw);
@@ -138,7 +145,7 @@ export function getStoredSubscriptions(): Subscription[] {
       });
       return migrated;
     }
-    saveStoredSubscriptions(SEED_SUBSCRIPTIONS);
+    saveStoredSubscriptions(SEED_SUBSCRIPTIONS, userId);
     return SEED_SUBSCRIPTIONS;
   } catch (err) {
     console.warn('Failed to read subscriptions from localStorage, returning seed data:', err);
@@ -146,15 +153,19 @@ export function getStoredSubscriptions(): Subscription[] {
   }
 }
 
-export function saveStoredSubscriptions(subscriptions: Subscription[]): void {
+export function saveStoredSubscriptions(subscriptions: Subscription[], userId?: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(subscriptions));
+    const json = JSON.stringify(subscriptions);
+    localStorage.setItem(STORAGE_KEY, json);
+    if (userId) {
+      localStorage.setItem(`${STORAGE_KEY}_${userId}`, json);
+    }
   } catch (err) {
     console.error('Failed to save subscriptions to localStorage:', err);
   }
 }
 
-export function resetToDefaults(): Subscription[] {
-  saveStoredSubscriptions(SEED_SUBSCRIPTIONS);
+export function resetToDefaults(userId?: string): Subscription[] {
+  saveStoredSubscriptions(SEED_SUBSCRIPTIONS, userId);
   return SEED_SUBSCRIPTIONS;
 }

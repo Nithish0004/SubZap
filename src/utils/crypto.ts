@@ -109,6 +109,19 @@ export async function decryptField(encryptedString: string, secretKey: string): 
 }
 
 /**
+ * Clean all undefined properties so Firestore setDoc never throws 'Unsupported field value: undefined'
+ */
+export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
  * Encrypts a Subscription object before storing in cloud Firestore
  */
 export async function encryptSubscription(
@@ -132,7 +145,7 @@ export async function encryptSubscription(
     sub.cancellationUrl ? encryptField(sub.cancellationUrl, secretKey) : Promise.resolve(undefined),
   ]);
 
-  const record: EncryptedSubscriptionRecord = {
+  const rawRecord: EncryptedSubscriptionRecord = {
     id: sub.id,
     userId,
     nameEnc,
@@ -151,7 +164,7 @@ export async function encryptSubscription(
     updatedAt: new Date().toISOString(),
   };
 
-  return record;
+  return sanitizeForFirestore(rawRecord);
 }
 
 /**

@@ -22,8 +22,7 @@ export async function fetchUserSubscriptionsFromCloud(
 ): Promise<Subscription[]> {
   try {
     const userSubsRef = collection(db, 'users', userId, 'subscriptions');
-    const q = query(userSubsRef, where('userId', '==', userId));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(userSubsRef);
 
     if (snapshot.empty) {
       return [];
@@ -41,11 +40,13 @@ export async function fetchUserSubscriptionsFromCloud(
     }
 
     // Cache locally for zero-latency instant render
-    saveStoredSubscriptions(decryptedList);
+    if (decryptedList.length > 0) {
+      saveStoredSubscriptions(decryptedList, userId);
+    }
     return decryptedList;
   } catch (error) {
     console.warn('Firestore fetch failed, falling back to local storage cache:', error);
-    return getStoredSubscriptions();
+    return getStoredSubscriptions(userId);
   }
 }
 
@@ -55,7 +56,7 @@ export async function saveUserSubscriptionToCloud(
   subscription: Subscription
 ): Promise<void> {
   // 1. Immediately persist locally for zero-latency UX
-  const localList = getStoredSubscriptions();
+  const localList = getStoredSubscriptions(userId);
   const existingIdx = localList.findIndex((s) => s.id === subscription.id);
   let updatedLocal: Subscription[];
   if (existingIdx >= 0) {
@@ -64,7 +65,7 @@ export async function saveUserSubscriptionToCloud(
   } else {
     updatedLocal = [subscription, ...localList];
   }
-  saveStoredSubscriptions(updatedLocal);
+  saveStoredSubscriptions(updatedLocal, userId);
 
   // 2. Encrypt client-side and push to Firestore
   try {
@@ -82,8 +83,9 @@ export async function deleteUserSubscriptionFromCloud(
   subscriptionId: string
 ): Promise<void> {
   // 1. Remove from local storage
-  const localList = getStoredSubscriptions();
-  saveStoredSubscriptions(localList.filter((s) => s.id !== subscriptionId));
+  const localList = getStoredSubscriptions(userId);
+  const updated = localList.filter((s) => s.id !== subscriptionId);
+  saveStoredSubscriptions(updated, userId);
 
   // 2. Remove from Firestore
   try {
@@ -99,7 +101,7 @@ export async function seedInitialSubscriptionsToCloud(
   userSecretKey: string,
   seedList: Subscription[]
 ): Promise<Subscription[]> {
-  saveStoredSubscriptions(seedList);
+  saveStoredSubscriptions(seedList, userId);
   for (const sub of seedList) {
     try {
       const encryptedRecord = await encryptSubscription(sub, userSecretKey, userId);

@@ -9,6 +9,13 @@ import {
 import { auth, googleProvider, testFirestoreConnection } from '../lib/firebase';
 import { UserProfile } from '../types';
 import { fetchUserProfile, saveUserProfile } from '../services/profileService';
+import { 
+  findAccountByIdentity, 
+  createRegisteredAccount, 
+  verifyAccountPassword, 
+  updateAccountPassword, 
+  RegisteredAccount 
+} from '../services/accountService';
 
 export interface AuthUser {
   uid: string;
@@ -19,13 +26,29 @@ export interface AuthUser {
   providerType: 'google' | 'email' | 'phone' | 'demo';
 }
 
+export interface LoginResult {
+  success: boolean;
+  errorReason?: 'not_found' | 'invalid_password' | 'general';
+  message?: string;
+  account?: RegisteredAccount;
+}
+
 interface AuthContextType {
   user: AuthUser | null;
   userProfile: UserProfile | null;
   userSecretKey: string;
   isLoading: boolean;
   needsOnboarding: boolean;
+  setNeedsOnboarding: (needs: boolean) => void;
   loginWithGoogle: () => Promise<void>;
+  loginWithCredentials: (identity: string, passwordAttempt: string) => Promise<LoginResult>;
+  registerWithCredentials: (data: {
+    fullName: string;
+    identity: string;
+    identityType: 'email' | 'phone';
+    password: string;
+  }) => Promise<AuthUser>;
+  resetUserPassword: (identity: string, newPassword: string) => Promise<boolean>;
   sendVerificationOtp: (identity: string, type: 'email' | 'phone') => Promise<string>;
   verifyOtpAndLogin: (identity: string, type: 'email' | 'phone', code: string, expectedCode: string) => Promise<void>;
   completeOnboarding: (data: Omit<UserProfile, 'userId' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -162,6 +185,113 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Strict Login with Credentials (Email or Phone + Password)
+  const loginWithCredentials = async (
+    identity: string, 
+    passwordAttempt: string
+  ): Promise<LoginResult> => {
+    setIsLoading(true);
+    try {
+      const account = await findAccountByIdentity(identity);
+      if (!account) {
+        return {
+          success: false,
+          errorReason: 'not_found',
+          message: 'Account does not exist. Redirecting you to create a new account...',
+        };
+      }
+
+      const isValidPassword = await verifyAccountPassword(account, passwordAttempt);
+      if (!isValidPassword) {
+        return {
+          success: false,
+          errorReason: 'invalid_password',
+          message: 'Invalid Credentials. Please double-check your password.',
+          account,
+        };
+      }
+
+      // Successful password match
+      const authUser: AuthUser = {
+        uid: account.id,
+        email: account.identityType === 'email' ? account.identity : null,
+        phoneNumber: account.identityType === 'phone' ? account.identity : null,
+        displayName: account.fullName,
+        providerType: account.identityType,
+      };
+
+      setUser(authUser);
+      localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(authUser));
+      await checkProfile(authUser.uid);
+
+      return {
+        success: true,
+        account,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        errorReason: 'general',
+        message: err.message || 'Authentication failed. Please try again.',
+      };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Register with credentials
+  const registerWithCredentials = async (data: {
+    fullName: string;
+    identity: string;
+    identityType: 'email' | 'phone';
+    password: string;
+  }): Promise<AuthUser> => {
+    setIsLoading(true);
+    try {
+      const account = await createRegisteredAccount(data);
+      const authUser: AuthUser = {
+        uid: account.id,
+        email: account.identityType === 'email' ? account.identity : null,
+        phoneNumber: account.identityType === 'phone' ? account.identity : null,
+        displayName: account.fullName,
+        providerType: account.identityType,
+      };
+
+      setUser(authUser);
+      localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(authUser));
+
+      // Create initial profile for user with their verified full name
+      const initialProfile: UserProfile = {
+        userId: account.id,
+        fullName: account.fullName,
+        identity: account.identity,
+        authProvider: account.identityType,
+        targetMonthlyBudget: 5000,
+        averageMonthlyExpense: 45000,
+        financialGoal: 'Moderate Tracking',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveUserProfile(initialProfile);
+      setUserProfile(initialProfile);
+      setNeedsOnboarding(false);
+
+      return authUser;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Self-Service Forgot Password Reset
+  const resetUserPassword = async (identity: string, newPassword: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      return await updateAccountPassword(identity, newPassword);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Dispatch OTP Verification Code (Email or Mobile Phone)
   const sendVerificationOtp = async (identity: string, type: 'email' | 'phone'): Promise<string> => {
     // Generate a secure 6-digit verification code
@@ -214,16 +344,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const completeOnboarding = async (
     data: Omit<UserProfile, 'userId' | 'createdAt' | 'updatedAt'>
   ) => {
-    if (!user) throw new Error('No authenticated user session found');
-
+    const currentUid = user?.uid || `usr_subzap_${Date.now()}`;
     const newProfile: UserProfile = {
       ...data,
-      userId: user.uid,
-      identity: user.email || user.phoneNumber || undefined,
-      authProvider: user.providerType === 'demo' ? 'google' : user.providerType,
+      userId: currentUid,
+      identity: user?.email || user?.phoneNumber || currentUid,
+      authProvider: user ? (user.providerType === 'demo' ? 'google' : user.providerType) : 'demo',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    if (!user) {
+      const demoUser: AuthUser = {
+        uid: currentUid,
+        displayName: data.fullName,
+        providerType: 'demo',
+      };
+      setUser(demoUser);
+      localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(demoUser));
+    }
 
     await saveUserProfile(newProfile);
     setUserProfile(newProfile);
@@ -251,7 +390,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userSecretKey,
         isLoading,
         needsOnboarding,
+        setNeedsOnboarding,
         loginWithGoogle,
+        loginWithCredentials,
+        registerWithCredentials,
+        resetUserPassword,
         sendVerificationOtp,
         verifyOtpAndLogin,
         completeOnboarding,
