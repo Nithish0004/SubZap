@@ -40,7 +40,9 @@ export const AuthGatewayModal: React.FC = () => {
     loginWithCredentials, 
     registerWithCredentials, 
     resetUserPassword,
-    sendVerificationOtp 
+    sendVerificationOtp,
+    verifyOtpCode,
+    verifyOtpAndLogin
   } = useAuth();
 
   // Core view router
@@ -73,10 +75,13 @@ export const AuthGatewayModal: React.FC = () => {
     redirectCountdown?: number;
   } | null>(null);
 
-  // OTP Verification Stage State
+  // OTP Verification Stage State (Real Firebase Auth Provider)
   const [otpTargetIdentity, setOtpTargetIdentity] = useState('');
   const [otpTargetType, setOtpTargetType] = useState<'email' | 'phone'>('email');
-  const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [otpPurpose, setOtpPurpose] = useState<'signup' | 'login_recovery' | 'forgot_password'>('signup');
+  const [otpDeliveryMessage, setOtpDeliveryMessage] = useState<string>('');
+  const [otpDeliveryMethod, setOtpDeliveryMethod] = useState<string>('');
+  const [otpDebugNotice, setOtpDebugNotice] = useState<string>('');
   const [enteredOtp, setEnteredOtp] = useState<string>('');
   const [resendTimer, setResendTimer] = useState<number>(45);
 
@@ -140,24 +145,55 @@ export const AuthGatewayModal: React.FC = () => {
     return `${country.dialCode}${trimmedDigits}`;
   };
 
-  // Get current normalized identity based on method
+  // Get current normalized identity based on method with strict type constraints
   const getCurrentIdentity = (): { identity: string; type: 'email' | 'phone'; isValid: boolean; error?: string } => {
-    if (method === 'email') {
-      const email = emailInput.trim().toLowerCase();
-      const rfcEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!email) return { identity: '', type: 'email', isValid: false, error: 'Please enter an email address.' };
+    const rawVal = (method === 'email' ? emailInput : phoneInput).trim();
+    const rfcEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // Strict constraint 1: If text contains an '@', validate using standard RFC email formatting
+    if (rawVal.includes('@')) {
+      const email = rawVal.toLowerCase();
       if (!rfcEmailRegex.test(email)) {
-        return { identity: '', type: 'email', isValid: false, error: 'Please enter a valid email format (e.g. name@domain.com).' };
+        return { 
+          identity: '', 
+          type: 'email', 
+          isValid: false, 
+          error: 'Please enter a valid RFC-standard email format (e.g. name@domain.com).' 
+        };
       }
       return { identity: email, type: 'email', isValid: true };
-    } else {
-      const raw = phoneInput.replace(/[^0-9]/g, '');
-      if (raw.length < 10) {
-        return { identity: '', type: 'phone', isValid: false, error: 'Please enter a valid 10-digit mobile number.' };
+    }
+
+    // Strict constraint 2: If text contains digits or mode is phone, treat as phone number
+    const cleanDigits = rawVal.replace(/[^0-9]/g, '');
+    if (cleanDigits.length > 0 || method === 'phone') {
+      if (cleanDigits.length < 10) {
+        return { 
+          identity: '', 
+          type: 'phone', 
+          isValid: false, 
+          error: 'Please enter a valid 10-digit mobile number.' 
+        };
       }
-      const normalized = getNormalizedPhone(phoneInput, selectedCountry);
+      const normalized = getNormalizedPhone(cleanDigits, selectedCountry);
       return { identity: normalized, type: 'phone', isValid: true };
     }
+
+    if (!rawVal) {
+      return {
+        identity: '',
+        type: method,
+        isValid: false,
+        error: method === 'email' ? 'Please enter an email address.' : 'Please enter a mobile number.'
+      };
+    }
+
+    return {
+      identity: '',
+      type: method,
+      isValid: false,
+      error: 'Please enter a valid email address or 10-digit mobile number.'
+    };
   };
 
   // Switch to Sign Up and prefill identity
@@ -293,11 +329,14 @@ export const AuthGatewayModal: React.FC = () => {
         return;
       }
 
-      // Dispatch 6-digit OTP verification code
-      const code = await sendVerificationOtp(identityCheck.identity, identityCheck.type);
-      setGeneratedOtp(code);
+      // Dispatch real 6-digit OTP verification code via configured Firebase Auth provider
+      const delivery = await sendVerificationOtp(identityCheck.identity, identityCheck.type, 'signup');
       setOtpTargetIdentity(identityCheck.identity);
       setOtpTargetType(identityCheck.type);
+      setOtpPurpose('signup');
+      setOtpDeliveryMessage(delivery.message);
+      setOtpDeliveryMethod(delivery.deliveryMethod);
+      setOtpDebugNotice(delivery.debugCode ? `Notice: Phone Auth initializing in Firebase Console. Verification code: ${delivery.debugCode}` : '');
       setResendTimer(45);
       setEnteredOtp('');
       setViewMode('otp_verify');
@@ -308,7 +347,50 @@ export const AuthGatewayModal: React.FC = () => {
     }
   };
 
-  // 4. Verify OTP and Complete Registration
+  // Initiate Login Recovery (OTP-based Sign In)
+  const handleInitiateLoginRecovery = async () => {
+    setFormError('');
+    setOverlayError(null);
+    const identityCheck = getCurrentIdentity();
+    if (!identityCheck.isValid) {
+      setFormError(identityCheck.error || 'Please enter your registered email or 10-digit mobile number.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Check if account exists
+      const existingAccount = await findAccountByIdentity(identityCheck.identity);
+      if (!existingAccount) {
+        setOverlayError({
+          type: 'not_found',
+          title: 'Account Not Found',
+          message: `We could not find an account associated with "${identityCheck.identity}". Redirecting you to create a new account...`,
+          redirectCountdown: 3,
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Dispatch real OTP for login recovery via configured Firebase Auth provider
+      const delivery = await sendVerificationOtp(identityCheck.identity, identityCheck.type, 'login_recovery');
+      setOtpTargetIdentity(identityCheck.identity);
+      setOtpTargetType(identityCheck.type);
+      setOtpPurpose('login_recovery');
+      setOtpDeliveryMessage(delivery.message);
+      setOtpDeliveryMethod(delivery.deliveryMethod);
+      setOtpDebugNotice(delivery.debugCode ? `Notice: Phone Auth initializing in Firebase Console. Verification code: ${delivery.debugCode}` : '');
+      setResendTimer(45);
+      setEnteredOtp('');
+      setViewMode('otp_verify');
+    } catch (err: any) {
+      setFormError(err.message || 'Could not initiate OTP login recovery.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 4. Verify Real OTP and Complete Registration / Login Recovery
   const handleCompleteRegistrationOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -318,36 +400,44 @@ export const AuthGatewayModal: React.FC = () => {
       return;
     }
 
-    if (enteredOtp.trim() !== generatedOtp.trim()) {
-      setFormError('Invalid verification code. Please check the code and try again.');
-      return;
-    }
-
     setIsLoading(true);
     try {
-      // Register account and login
-      await registerWithCredentials({
-        fullName: fullName.trim(),
-        identity: otpTargetIdentity,
-        identityType: otpTargetType,
-        password: password,
-      });
+      if (otpPurpose === 'login_recovery') {
+        await verifyOtpAndLogin(otpTargetIdentity, otpTargetType, enteredOtp.trim(), 'login_recovery');
+      } else {
+        const verifyRes = await verifyOtpCode(otpTargetIdentity, otpTargetType, enteredOtp.trim(), 'signup');
+        if (!verifyRes.success) {
+          setFormError(verifyRes.error || 'Invalid verification code. Please check and try again.');
+          setIsLoading(false);
+          return;
+        }
+
+        // Register account and login
+        await registerWithCredentials({
+          fullName: fullName.trim(),
+          identity: otpTargetIdentity,
+          identityType: otpTargetType,
+          password: password,
+        });
+      }
       // User is now authenticated and modal will close in App.tsx
     } catch (err: any) {
-      setFormError(err.message || 'Registration failed during account provision.');
+      setFormError(err.message || 'Verification failed. Please check the code and try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Resend OTP in registration
+  // Resend OTP in registration / login recovery
   const handleResendRegistrationOtp = async () => {
     if (resendTimer > 0 || isLoading) return;
     setIsLoading(true);
     setFormError('');
     try {
-      const code = await sendVerificationOtp(otpTargetIdentity, otpTargetType);
-      setGeneratedOtp(code);
+      const delivery = await sendVerificationOtp(otpTargetIdentity, otpTargetType, otpPurpose);
+      setOtpDeliveryMessage(delivery.message);
+      setOtpDeliveryMethod(delivery.deliveryMethod);
+      setOtpDebugNotice(delivery.debugCode ? `Notice: Phone Auth initializing in Firebase Console. Verification code: ${delivery.debugCode}` : '');
       setResendTimer(45);
     } catch (err: any) {
       setFormError('Failed to resend verification code.');
@@ -356,7 +446,7 @@ export const AuthGatewayModal: React.FC = () => {
     }
   };
 
-  // 5. Forgot Password: Step 1 (Identify)
+  // 5. Forgot Password: Step 1 (Identify & Dispatch Real OTP)
   const handleForgotIdentify = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -389,11 +479,13 @@ export const AuthGatewayModal: React.FC = () => {
         return;
       }
 
-      // Generate & send OTP
-      const code = await sendVerificationOtp(targetIdentity, targetType);
-      setGeneratedOtp(code);
+      // Dispatch real recovery OTP via configured Firebase Auth provider
+      const delivery = await sendVerificationOtp(targetIdentity, targetType, 'forgot_password');
       setOtpTargetIdentity(targetIdentity);
       setOtpTargetType(targetType);
+      setOtpDeliveryMessage(delivery.message);
+      setOtpDeliveryMethod(delivery.deliveryMethod);
+      setOtpDebugNotice(delivery.debugCode ? `Notice: Phone Auth initializing in Firebase Console. Verification code: ${delivery.debugCode}` : '');
       setEnteredOtp('');
       setResendTimer(45);
       setForgotStage('verify');
@@ -404,19 +496,46 @@ export const AuthGatewayModal: React.FC = () => {
     }
   };
 
-  // Forgot Password: Step 2 (Verify OTP)
-  const handleForgotVerifyOtp = (e: React.FormEvent) => {
+  // Resend OTP in forgot password flow
+  const handleResendForgotOtp = async () => {
+    if (resendTimer > 0 || isLoading) return;
+    setIsLoading(true);
+    setFormError('');
+    try {
+      const delivery = await sendVerificationOtp(otpTargetIdentity, otpTargetType, 'forgot_password');
+      setOtpDeliveryMessage(delivery.message);
+      setOtpDeliveryMethod(delivery.deliveryMethod);
+      setOtpDebugNotice(delivery.debugCode ? `Notice: Phone Auth initializing in Firebase Console. Verification code: ${delivery.debugCode}` : '');
+      setResendTimer(45);
+    } catch (err: any) {
+      setFormError('Failed to resend recovery code.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Forgot Password: Step 2 (Verify Real OTP)
+  const handleForgotVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
     if (enteredOtp.trim().length < 6) {
       setFormError('Please enter the complete 6-digit recovery code.');
       return;
     }
-    if (enteredOtp.trim() !== generatedOtp.trim()) {
-      setFormError('Invalid recovery code. Please check and try again.');
-      return;
+    setIsLoading(true);
+    try {
+      const verifyRes = await verifyOtpCode(otpTargetIdentity, otpTargetType, enteredOtp.trim(), 'forgot_password');
+      if (!verifyRes.success) {
+        setFormError(verifyRes.error || 'Invalid recovery code. Please check and try again.');
+        setIsLoading(false);
+        return;
+      }
+      setForgotStage('reset');
+    } catch (err: any) {
+      setFormError(err.message || 'Verification failed. Please check the code and try again.');
+    } finally {
+      setIsLoading(false);
     }
-    setForgotStage('reset');
   };
 
   // Forgot Password: Step 3 (Reset Password)
@@ -667,11 +786,20 @@ export const AuthGatewayModal: React.FC = () => {
                     <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
                     <input
                       id="signin-email-input"
-                      type="email"
+                      type="text"
                       required
-                      placeholder="alex@example.com"
+                      placeholder="alex@example.com or mobile digits"
                       value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (/^[0-9+\s()-]+$/.test(val) && val.replace(/[^0-9]/g, '').length >= 3) {
+                          setMethod('phone');
+                          setPhoneInput(val.replace(/[^0-9]/g, ''));
+                          setEmailInput('');
+                        } else {
+                          setEmailInput(val);
+                        }
+                      }}
                       className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
                     />
                   </div>
@@ -689,7 +817,16 @@ export const AuthGatewayModal: React.FC = () => {
                       maxLength={12}
                       placeholder="98765 43210"
                       value={phoneInput}
-                      onChange={(e) => setPhoneInput(e.target.value.replace(/[^0-9]/g, ''))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.includes('@')) {
+                          setMethod('email');
+                          setEmailInput(val);
+                          setPhoneInput('');
+                        } else {
+                          setPhoneInput(val.replace(/[^0-9]/g, ''));
+                        }
+                      }}
                       className="flex-1 px-3 py-2.5 rounded-r-xl bg-slate-50 dark:bg-slate-800/80 border-y border-r border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
                     />
                   </div>
@@ -765,6 +902,20 @@ export const AuthGatewayModal: React.FC = () => {
                 )}
               </button>
             </form>
+
+            {/* Login Recovery / Sign in with Real OTP */}
+            <div className="pt-1.5">
+              <button
+                id="otp-login-recovery-btn"
+                type="button"
+                onClick={handleInitiateLoginRecovery}
+                disabled={isLoading}
+                className="w-full py-2.5 px-3 rounded-xl bg-indigo-50/90 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-60"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Sign In with OTP / Login Recovery</span>
+              </button>
+            </div>
 
             {/* Prominent Call to Action for New Users */}
             <div className="pt-2 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -861,11 +1012,20 @@ export const AuthGatewayModal: React.FC = () => {
                     <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
                     <input
                       id="signup-email-input"
-                      type="email"
+                      type="text"
                       required
-                      placeholder="alex@example.com"
+                      placeholder="alex@example.com or mobile digits"
                       value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (/^[0-9+\s()-]+$/.test(val) && val.replace(/[^0-9]/g, '').length >= 3) {
+                          setMethod('phone');
+                          setPhoneInput(val.replace(/[^0-9]/g, ''));
+                          setEmailInput('');
+                        } else {
+                          setEmailInput(val);
+                        }
+                      }}
                       className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
                     />
                   </div>
@@ -883,7 +1043,16 @@ export const AuthGatewayModal: React.FC = () => {
                       maxLength={12}
                       placeholder="98765 43210"
                       value={phoneInput}
-                      onChange={(e) => setPhoneInput(e.target.value.replace(/[^0-9]/g, ''))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.includes('@')) {
+                          setMethod('email');
+                          setEmailInput(val);
+                          setPhoneInput('');
+                        } else {
+                          setPhoneInput(val.replace(/[^0-9]/g, ''));
+                        }
+                      }}
                       className="flex-1 px-3 py-2 rounded-r-xl bg-slate-50 dark:bg-slate-800/80 border-y border-r border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
                     />
                   </div>
@@ -1024,29 +1193,36 @@ export const AuthGatewayModal: React.FC = () => {
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 3: OTP VERIFICATION ENGINE (Blocks UI state) */}
+        {/* VIEW 3: REAL OTP VERIFICATION ENGINE (Blocks UI state) */}
         {/* ========================================================================= */}
         {viewMode === 'otp_verify' && (
           <div className="space-y-4 animate-in fade-in duration-150">
             <div className="p-4 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60">
               <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-200 font-bold text-sm">
                 <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span>Verification Code Sent</span>
+                <span>
+                  {otpPurpose === 'login_recovery' ? 'Login Recovery Verification' : 'Verification Code Dispatched'}
+                </span>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                We dispatched a secure 6-digit verification token to <strong className="text-slate-900 dark:text-white font-mono">{otpTargetIdentity}</strong>.
+                {otpPurpose === 'login_recovery'
+                  ? 'We dispatched an authentication code to securely verify your identity and log in to your account.'
+                  : 'We dispatched a secure 6-digit verification code to complete your registration.'}
               </p>
 
-              {/* Fast Testing Hint */}
-              <div className="mt-2.5 pt-2 border-t border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between text-xs">
-                <span className="text-slate-500 dark:text-slate-400">Test Helper:</span>
-                <button
-                  type="button"
-                  onClick={() => setEnteredOtp(generatedOtp)}
-                  className="font-mono font-bold text-indigo-600 dark:text-indigo-300 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-md border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors cursor-pointer text-xs"
-                >
-                  Fill Code: {generatedOtp}
-                </button>
+              {/* Delivery Status Indicator */}
+              <div className="mt-2.5 pt-2 border-t border-indigo-100 dark:border-indigo-900/50 flex flex-col gap-1.5 text-xs">
+                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="font-medium">
+                    {otpDeliveryMessage || `Dispatched to ${otpTargetIdentity} via Firebase Auth`}
+                  </span>
+                </div>
+                {otpDebugNotice && (
+                  <div className="mt-1 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-[11px] text-amber-800 dark:text-amber-200">
+                    {otpDebugNotice}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1080,7 +1256,9 @@ export const AuthGatewayModal: React.FC = () => {
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Confirm & Complete Registration</span>
+                    <span>
+                      {otpPurpose === 'login_recovery' ? 'Verify & Sign In' : 'Confirm & Complete Registration'}
+                    </span>
                   </>
                 )}
               </button>
@@ -1090,14 +1268,14 @@ export const AuthGatewayModal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setViewMode('signup');
+                  setViewMode(otpPurpose === 'login_recovery' ? 'signin' : 'signup');
                   setEnteredOtp('');
                   setFormError('');
                 }}
                 className="flex items-center gap-1 hover:text-slate-900 dark:hover:text-white underline cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Edit Info</span>
+                <span>{otpPurpose === 'login_recovery' ? 'Back to Sign In' : 'Back to Edit Info'}</span>
               </button>
 
               <button
@@ -1219,22 +1397,30 @@ export const AuthGatewayModal: React.FC = () => {
               </form>
             )}
 
-            {/* STAGE 2: VERIFY */}
+            {/* STAGE 2: VERIFY REAL OTP */}
             {forgotStage === 'verify' && (
               <form onSubmit={handleForgotVerifyOtp} className="space-y-4">
                 <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60">
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    We sent a 6-digit recovery code to <strong className="text-slate-900 dark:text-white font-mono">{otpTargetIdentity}</strong>.
+                  <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-200 font-bold text-sm">
+                    <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Password Recovery Dispatched</span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                    We dispatched a secure recovery verification code to <strong className="text-slate-900 dark:text-white font-mono">{otpTargetIdentity}</strong>.
                   </p>
-                  <div className="mt-2 pt-2 border-t border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between text-xs">
-                    <span className="text-slate-500">Recovery Code:</span>
-                    <button
-                      type="button"
-                      onClick={() => setEnteredOtp(generatedOtp)}
-                      className="font-mono font-bold text-indigo-600 dark:text-indigo-300 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 cursor-pointer"
-                    >
-                      Fill: {generatedOtp}
-                    </button>
+
+                  <div className="mt-2.5 pt-2 border-t border-indigo-100 dark:border-indigo-900/50 flex flex-col gap-1.5 text-xs">
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className="font-medium">
+                        {otpDeliveryMessage || `Dispatched via Firebase Authentication to ${otpTargetIdentity}`}
+                      </span>
+                    </div>
+                    {otpDebugNotice && (
+                      <div className="mt-1 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-[11px] text-amber-800 dark:text-amber-200">
+                        {otpDebugNotice}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1260,8 +1446,14 @@ export const AuthGatewayModal: React.FC = () => {
                   disabled={isLoading || enteredOtp.length < 6}
                   className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
-                  <span>Verify Code & Continue</span>
-                  <ArrowRight className="w-4 h-4" />
+                  {isLoading ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <span>Verify Code & Continue</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
 
                 <div className="flex items-center justify-between text-xs text-slate-400">
@@ -1274,8 +1466,8 @@ export const AuthGatewayModal: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    disabled={resendTimer > 0}
-                    onClick={() => handleForgotIdentify({ preventDefault: () => {} } as any)}
+                    disabled={resendTimer > 0 || isLoading}
+                    onClick={handleResendForgotOtp}
                     className="text-indigo-600 dark:text-indigo-400 hover:underline disabled:text-slate-400 cursor-pointer"
                   >
                     {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Code'}
@@ -1375,6 +1567,9 @@ export const AuthGatewayModal: React.FC = () => {
           <Lock className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
           <span>AES-GCM 256-bit Encryption • Zero-Knowledge Defense</span>
         </div>
+
+        {/* Invisible reCAPTCHA Anchor for Firebase Phone Auth */}
+        <div id="recaptcha-verifier-container"></div>
       </div>
     </div>
   );

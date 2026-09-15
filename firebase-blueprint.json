@@ -58,6 +58,22 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "fullName", "identity", "identityType", "passwordHash", "salt"]
+    },
+    "VerificationOtp": {
+      "title": "VerificationOtp",
+      "description": "Secure verification OTP challenge for signup, login recovery, and forgot-password",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "identity": { "type": "string" },
+        "identityType": { "type": "string", "enum": ["email", "phone"] },
+        "purpose": { "type": "string", "enum": ["signup", "login_recovery", "forgot_password"] },
+        "codeHash": { "type": "string" },
+        "expiresAt": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "identity", "identityType", "purpose", "codeHash", "expiresAt"]
     }
   },
   "firestore": {
@@ -72,6 +88,10 @@
     "/accounts/{accountId}": {
       "schema": { "$ref": "UserAccount" },
       "description": "Registered user credentials and identity mapping"
+    },
+    "/verification_otps/{otpId}": {
+      "schema": { "$ref": "VerificationOtp" },
+      "description": "Active real OTP verification challenges"
     }
   }
 }

@@ -36,5 +36,12 @@ service cloud.firestore {
       allow create, update: if isValidId(accountId);
       allow delete: if false;
     }
+
+    // Verification OTPs: /verification_otps/{otpId}
+    match /verification_otps/{otpId} {
+      allow get: if isValidId(otpId);
+      allow create, update: if isValidId(otpId);
+      allow delete: if false;
+    }
   }
 }

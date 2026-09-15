@@ -22,7 +22,7 @@ const DEFAULT_DEMO_ACCOUNTS: RegisteredAccount[] = [
     fullName: 'Nithish S',
     identity: 'nithishsnithishs96@gmail.com',
     identityType: 'email',
-    passwordHash: '8b79b5d3c87a55f9a65f97b61314975e5330e70399120689b7b9f338d1033230', // Secure#2026
+    passwordHash: '5542fe9e02fb8d9eb8a645f83b513ed669277656bc8ade377d6f891620ad2187', // Secure#2026
     salt: 'subzap_salt_demo_1',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -32,7 +32,7 @@ const DEFAULT_DEMO_ACCOUNTS: RegisteredAccount[] = [
     fullName: 'Alex Sharma',
     identity: '+919876543210',
     identityType: 'phone',
-    passwordHash: '8b79b5d3c87a55f9a65f97b61314975e5330e70399120689b7b9f338d1033230', // Secure#2026
+    passwordHash: '493297c512a717b79b79d674e0cc1afabd89fadbf18e04875688a514da531b46', // Secure#2026
     salt: 'subzap_salt_demo_2',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -102,7 +102,16 @@ export async function findAccountByIdentity(identity: string): Promise<Registere
   
   // 1. Check local storage
   const localAccounts = getLocalAccounts();
-  const localMatch = localAccounts.find(a => a.identity.toLowerCase() === normalized);
+  let localMatch = localAccounts.find(a => a.identity.toLowerCase() === normalized);
+  
+  // If not found and identity contains only digits or phone format, match by last 10 digits
+  if (!localMatch && !normalized.includes('@')) {
+    const cleanDigits = normalized.replace(/[^0-9]/g, '');
+    if (cleanDigits.length === 10) {
+      localMatch = localAccounts.find(a => a.identityType === 'phone' && a.identity.endsWith(cleanDigits));
+    }
+  }
+
   if (localMatch) {
     return localMatch;
   }

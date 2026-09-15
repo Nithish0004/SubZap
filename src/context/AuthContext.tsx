@@ -16,6 +16,11 @@ import {
   updateAccountPassword, 
   RegisteredAccount 
 } from '../services/accountService';
+import { 
+  sendRealOtp, 
+  verifyRealOtp, 
+  OtpDeliveryResult 
+} from '../services/otpService';
 
 export interface AuthUser {
   uid: string;
@@ -49,8 +54,23 @@ interface AuthContextType {
     password: string;
   }) => Promise<AuthUser>;
   resetUserPassword: (identity: string, newPassword: string) => Promise<boolean>;
-  sendVerificationOtp: (identity: string, type: 'email' | 'phone') => Promise<string>;
-  verifyOtpAndLogin: (identity: string, type: 'email' | 'phone', code: string, expectedCode: string) => Promise<void>;
+  sendVerificationOtp: (
+    identity: string, 
+    type: 'email' | 'phone', 
+    purpose?: 'signup' | 'login_recovery' | 'forgot_password'
+  ) => Promise<OtpDeliveryResult>;
+  verifyOtpCode: (
+    identity: string,
+    type: 'email' | 'phone',
+    code: string,
+    purpose?: 'signup' | 'login_recovery' | 'forgot_password'
+  ) => Promise<{ success: boolean; error?: string }>;
+  verifyOtpAndLogin: (
+    identity: string, 
+    type: 'email' | 'phone', 
+    code: string,
+    purpose?: 'signup' | 'login_recovery' | 'forgot_password'
+  ) => Promise<void>;
   completeOnboarding: (data: Omit<UserProfile, 'userId' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -292,13 +312,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Dispatch OTP Verification Code (Email or Mobile Phone)
-  const sendVerificationOtp = async (identity: string, type: 'email' | 'phone'): Promise<string> => {
-    // Generate a secure 6-digit verification code
-    const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-    // Simulate real SMS/Email dispatch (and log to console for auditing)
-    console.info(`[SubZap Verification Engine] Secure 6-digit OTP code for ${type} ${identity}: ${generatedCode}`);
-    return generatedCode;
+  // Dispatch Real OTP Verification Code via configured Firebase Auth provider
+  const sendVerificationOtp = async (
+    identity: string, 
+    type: 'email' | 'phone',
+    purpose: 'signup' | 'login_recovery' | 'forgot_password' = 'signup'
+  ): Promise<OtpDeliveryResult> => {
+    setIsLoading(true);
+    try {
+      const result = await sendRealOtp(identity, type, purpose);
+      return result;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Verify Real OTP Code against configured Firebase Auth provider
+  const verifyOtpCode = async (
+    identity: string,
+    type: 'email' | 'phone',
+    code: string,
+    purpose: 'signup' | 'login_recovery' | 'forgot_password' = 'signup'
+  ): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    try {
+      return await verifyRealOtp(identity, type, code, purpose);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Verify OTP and provision / authenticate cloud account
@@ -306,22 +347,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     identity: string,
     type: 'email' | 'phone',
     enteredCode: string,
-    expectedCode: string
+    purpose: 'signup' | 'login_recovery' | 'forgot_password' = 'signup'
   ) => {
-    if (enteredCode.trim() !== expectedCode.trim()) {
-      throw new Error('Invalid verification code. Please check and try again.');
-    }
-
     setIsLoading(true);
     try {
-      // Provision Firebase Anonymous session or derive authenticated UID
+      const verification = await verifyRealOtp(identity, type, enteredCode, purpose);
+      if (!verification.success) {
+        throw new Error(verification.error || 'Invalid verification code. Please check and try again.');
+      }
+
+      // Provision Firebase session or derive authenticated UID
       let uid = '';
-      try {
-        const anon = await signInAnonymously(auth);
-        uid = anon.user.uid;
-      } catch (e) {
-        // Deterministic cloud hash UID fallback
-        uid = `usr_${btoa(identity).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
+      if (verification.user?.uid) {
+        uid = verification.user.uid;
+      } else {
+        try {
+          const anon = await signInAnonymously(auth);
+          uid = anon.user.uid;
+        } catch (e) {
+          // Deterministic cloud hash UID fallback
+          uid = `usr_${btoa(identity).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
+        }
       }
 
       const verifiedUser: AuthUser = {
@@ -396,6 +442,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registerWithCredentials,
         resetUserPassword,
         sendVerificationOtp,
+        verifyOtpCode,
         verifyOtpAndLogin,
         completeOnboarding,
         signOut,
