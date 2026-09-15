@@ -4,7 +4,6 @@ import {
   AlertTriangle, 
   ShieldAlert, 
   CheckCircle, 
-  TrendingUp, 
   Edit3, 
   Check, 
   X,
@@ -113,11 +112,11 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
   return (
     <div 
       id="dashboard-budget-gauge-card"
-      className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm transition-all overflow-hidden"
+      className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm transition-all overflow-hidden w-full min-w-0"
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2.5">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
             isOverBudget
               ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20'
               : isNearLimit
@@ -126,16 +125,16 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
           }`}>
             <Target className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
                 Personalized Budget Limit Gauge
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shrink-0">
                 {goal}
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
               Target monthly ceiling synced with cloud profiling
             </p>
           </div>
@@ -143,7 +142,7 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
 
         {/* Quick Edit Budget Trigger */}
         {!isEditing ? (
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
             <button
               onClick={() => setNeedsOnboarding(true)}
               className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 bg-transparent rounded-lg border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
@@ -161,7 +160,7 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 self-start sm:self-auto">
+          <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
             <input
               type="number"
               value={newBudget}
@@ -170,14 +169,14 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
             />
             <button
               onClick={handleSaveBudget}
-              className="p-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"
+              className="p-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 cursor-pointer"
               title="Save"
             >
               <Check className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setIsEditing(false)}
-              className="p-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+              className="p-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
               title="Cancel"
             >
               <X className="w-3.5 h-3.5" />
@@ -190,14 +189,14 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
         <div className="flex items-baseline gap-2">
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Target Budget:</span>
-          <span className="text-lg font-black font-mono text-slate-900 dark:text-white">
+          <span className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-white">
             {formatBaseINR(targetBudget)}
           </span>
         </div>
 
         <div className="flex items-baseline gap-2">
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Current Burn:</span>
-          <span className={`text-lg font-black font-mono ${
+          <span className={`text-base sm:text-lg font-black font-mono ${
             isOverBudget 
               ? 'text-rose-600 dark:text-rose-400' 
               : isNearLimit 
@@ -225,21 +224,21 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
       </div>
 
       {/* Status Feedback Badge */}
-      <div className="flex items-center justify-between text-xs pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1">
         {isOverBudget ? (
           <div className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 font-semibold">
             <ShieldAlert className="w-4 h-4 shrink-0" />
-            <span>Budget Exceeded! Wallet bleed is {formatBaseINR(currentMonthlyBurnINR - targetBudget)} over limit.</span>
+            <span>Budget Exceeded! Bleed is {formatBaseINR(currentMonthlyBurnINR - targetBudget)} over limit.</span>
           </div>
         ) : isNearLimit ? (
           <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-semibold">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>Caution: Approaching budget ceiling ({formatBaseINR(targetBudget - currentMonthlyBurnINR)} cushion remains).</span>
+            <span>Caution: Near budget ceiling ({formatBaseINR(targetBudget - currentMonthlyBurnINR)} cushion remains).</span>
           </div>
         ) : (
           <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
             <CheckCircle className="w-4 h-4 shrink-0" />
-            <span>Optimal Defense: Spending is safely within your target ({formatBaseINR(targetBudget - currentMonthlyBurnINR)} headroom).</span>
+            <span>Optimal Defense: Spending is safely within target ({formatBaseINR(targetBudget - currentMonthlyBurnINR)} headroom).</span>
           </div>
         )}
 

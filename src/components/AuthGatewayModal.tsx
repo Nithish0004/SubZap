@@ -597,7 +597,7 @@ export const AuthGatewayModal: React.FC = () => {
       {/* Main Glassmorphism Card */}
       <div 
         id="auth-gateway-container"
-        className="relative w-full max-w-lg bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-2xl shadow-indigo-950/20 dark:shadow-indigo-950/50 overflow-hidden p-6 sm:p-8 text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border border-slate-200/80 dark:border-slate-800/80 rounded-2xl sm:rounded-3xl shadow-2xl shadow-indigo-950/20 dark:shadow-indigo-950/50 overflow-y-auto max-h-[92vh] p-4 sm:p-8 text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-200 my-auto"
       >
         {/* Subtle top rainbow accent border */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400" />

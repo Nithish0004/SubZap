@@ -288,7 +288,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#090D16] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white antialiased font-sans transition-colors duration-200">
+    <div className="min-h-screen w-full max-w-full bg-slate-50 dark:bg-[#090D16] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white antialiased font-sans transition-colors duration-200">
       {/* 1. Auth Gateway Modal (if not authenticated) */}
       {!user && <AuthGatewayModal />}
 
@@ -312,7 +312,7 @@ export default function App() {
       />
 
       {/* Main Content View Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 min-w-0">
         {currentTab === 'analytics' && (
           <AnalyticsHub
             metrics={metrics}

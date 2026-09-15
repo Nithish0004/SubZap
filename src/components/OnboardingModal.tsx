@@ -73,11 +73,11 @@ export const OnboardingModal: React.FC = () => {
     <div 
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
     >
       <div 
         id="onboarding-survey-dialog"
-        className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6 sm:p-8 text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl overflow-y-auto max-h-[92vh] p-4 sm:p-8 text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-200 my-auto"
       >
         {/* Header Progress Indicators */}
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-5 mb-6">

@@ -70,6 +70,8 @@ export function formatCurrency(amount: number, currency = '₹'): string {
   return `${currency}${formatted}`;
 }
 
+export const formatINR = (amount: number): string => formatCurrency(amount, '₹');
+
 /**
  * Get difference in full calendar days between today and target date string (YYYY-MM-DD)
  */

@@ -95,3 +95,5 @@ export interface FinancialMetrics {
   simulatedMonthlyBurn: number;
   simulatedYearlyBleed: number;
 }
+
+export type AnalyticsMetrics = FinancialMetrics;
