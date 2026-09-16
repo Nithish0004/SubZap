@@ -56,9 +56,9 @@ export default function App() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [alerts, setAlerts] = useState<InAppNotification[]>([]);
 
-  // 2. Fetch and synchronize encrypted subscriptions from Firestore when user logs in
+  // 2. Fetch and synchronize encrypted subscriptions from Firestore when user logs in and is verified
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.emailVerified) return;
 
     let isMounted = true;
     const syncFromCloud = async () => {
@@ -287,13 +287,21 @@ export default function App() {
     return <AuthLoadingSkeleton />;
   }
 
+  // Protected route check: Block access if user is not logged in or unverified
+  const isAuthedAndVerified = Boolean(user && user.emailVerified);
+
+  if (!isAuthedAndVerified) {
+    return (
+      <div className="min-h-screen w-full max-w-full bg-slate-50 dark:bg-[#090D16] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white antialiased font-sans">
+        <AuthGatewayModal />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen w-full max-w-full bg-slate-50 dark:bg-[#090D16] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white antialiased font-sans transition-colors duration-200">
-      {/* 1. Auth Gateway Modal (if not authenticated) */}
-      {!user && <AuthGatewayModal />}
-
-      {/* 2. Dynamic User Onboarding Survey Modal (upon first-time verification) */}
-      {user && needsOnboarding && <OnboardingModal />}
+      {/* Dynamic User Onboarding Survey Modal (upon first-time verification) */}
+      {needsOnboarding && <OnboardingModal />}
 
       {/* Top Application Header */}
       <Header

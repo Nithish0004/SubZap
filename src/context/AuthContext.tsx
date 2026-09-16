@@ -4,6 +4,11 @@ import {
   signInWithPopup, 
   signInAnonymously,
   signOut as fbSignOut, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  updateProfile,
   User as FirebaseUser 
 } from 'firebase/auth';
 import { auth, googleProvider, testFirestoreConnection } from '../lib/firebase';
@@ -11,9 +16,6 @@ import { UserProfile } from '../types';
 import { fetchUserProfile, saveUserProfile } from '../services/profileService';
 import { 
   findAccountByIdentity, 
-  createRegisteredAccount, 
-  verifyAccountPassword, 
-  updateAccountPassword, 
   RegisteredAccount 
 } from '../services/accountService';
 import { 
@@ -29,11 +31,13 @@ export interface AuthUser {
   displayName?: string | null;
   photoURL?: string | null;
   providerType: 'google' | 'email' | 'phone' | 'demo';
+  emailVerified: boolean;
 }
 
 export interface LoginResult {
   success: boolean;
-  errorReason?: 'not_found' | 'invalid_password' | 'general';
+  emailVerified?: boolean;
+  errorReason?: 'not_found' | 'invalid_password' | 'unverified' | 'general';
   message?: string;
   account?: RegisteredAccount;
 }
@@ -46,13 +50,22 @@ interface AuthContextType {
   needsOnboarding: boolean;
   setNeedsOnboarding: (needs: boolean) => void;
   loginWithGoogle: () => Promise<void>;
+  loginWithEmail: (email: string, passwordAttempt: string) => Promise<LoginResult>;
   loginWithCredentials: (identity: string, passwordAttempt: string) => Promise<LoginResult>;
+  signUpWithEmail: (data: {
+    fullName: string;
+    email: string;
+    password: string;
+  }) => Promise<{ success: boolean; error?: string; code?: string; user?: AuthUser }>;
   registerWithCredentials: (data: {
     fullName: string;
     identity: string;
     identityType: 'email' | 'phone';
     password: string;
   }) => Promise<AuthUser>;
+  checkEmailVerified: () => Promise<boolean>;
+  resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
+  sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   resetUserPassword: (identity: string, newPassword: string) => Promise<boolean>;
   sendVerificationOtp: (
     identity: string, 
@@ -94,14 +107,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     testFirestoreConnection().catch(console.warn);
   }, []);
 
-  // Sync auth state listener from Firebase Auth + local fallback
+  // Sync auth state listener from Firebase Auth
   useEffect(() => {
     // 1. Check local session cache first
     try {
       const savedUserStr = localStorage.getItem(LOCAL_SESSION_USER);
       if (savedUserStr) {
         const parsed = JSON.parse(savedUserStr) as AuthUser;
-        setUser(parsed);
+        if (parsed.emailVerified) {
+          setUser(parsed);
+        }
       }
     } catch (e) {
       // ignore
@@ -110,33 +125,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 2. Listen to real Firebase Auth changes
     const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
       if (fbUser) {
+        const isGoogle = fbUser.providerData.some((p) => p.providerId === 'google.com');
+        const isVerified = Boolean(fbUser.emailVerified || isGoogle);
+
         const authUser: AuthUser = {
           uid: fbUser.uid,
           email: fbUser.email,
           phoneNumber: fbUser.phoneNumber,
           displayName: fbUser.displayName,
           photoURL: fbUser.photoURL,
-          providerType: fbUser.email ? (fbUser.providerData[0]?.providerId === 'google.com' ? 'google' : 'email') : 'phone',
+          providerType: isGoogle ? 'google' : (fbUser.email ? 'email' : 'phone'),
+          emailVerified: isVerified,
         };
+
         setUser(authUser);
-        localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(authUser));
-        await checkProfile(authUser.uid);
-      } else {
-        // If no fbUser and no local session
-        const localSaved = localStorage.getItem(LOCAL_SESSION_USER);
-        if (localSaved) {
-          try {
-            const parsed = JSON.parse(localSaved) as AuthUser;
-            setUser(parsed);
-            await checkProfile(parsed.uid);
-          } catch (e) {
-            setUser(null);
-            setUserProfile(null);
-          }
+
+        if (isVerified) {
+          localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(authUser));
+          await checkProfile(authUser.uid);
         } else {
-          setUser(null);
-          setUserProfile(null);
+          // Block unverified user from accessing persisted verified session
+          localStorage.removeItem(LOCAL_SESSION_USER);
         }
+      } else {
+        localStorage.removeItem(LOCAL_SESSION_USER);
+        setUser(null);
+        setUserProfile(null);
       }
       setIsLoading(false);
     });
@@ -179,6 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         displayName: fbUser.displayName,
         photoURL: fbUser.photoURL,
         providerType: 'google',
+        emailVerified: true,
       };
       setUser(authUser);
       localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(authUser));
@@ -193,6 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: 'google-user@subzap.app',
           displayName: 'Google Verified User',
           providerType: 'google',
+          emailVerified: true,
         };
         setUser(fallbackUser);
         localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(fallbackUser));
@@ -205,111 +221,267 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Strict Login with Credentials (Email or Phone + Password)
-  const loginWithCredentials = async (
-    identity: string, 
-    passwordAttempt: string
-  ): Promise<LoginResult> => {
+  // Real Firebase Authentication: Email & Password Sign In
+  const loginWithEmail = async (email: string, passwordAttempt: string): Promise<LoginResult> => {
     setIsLoading(true);
     try {
-      const account = await findAccountByIdentity(identity);
-      if (!account) {
-        return {
-          success: false,
-          errorReason: 'not_found',
-          message: 'Account does not exist. Redirecting you to create a new account...',
-        };
-      }
+      const trimmedEmail = email.trim();
+      const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, passwordAttempt);
+      const fbUser = userCredential.user;
+      const isVerified = Boolean(fbUser.emailVerified);
 
-      const isValidPassword = await verifyAccountPassword(account, passwordAttempt);
-      if (!isValidPassword) {
-        return {
-          success: false,
-          errorReason: 'invalid_password',
-          message: 'Invalid Credentials. Please double-check your password.',
-          account,
-        };
-      }
-
-      // Successful password match
       const authUser: AuthUser = {
-        uid: account.id,
-        email: account.identityType === 'email' ? account.identity : null,
-        phoneNumber: account.identityType === 'phone' ? account.identity : null,
-        displayName: account.fullName,
-        providerType: account.identityType,
+        uid: fbUser.uid,
+        email: fbUser.email,
+        phoneNumber: fbUser.phoneNumber,
+        displayName: fbUser.displayName,
+        photoURL: fbUser.photoURL,
+        providerType: 'email',
+        emailVerified: isVerified,
       };
 
       setUser(authUser);
-      localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(authUser));
-      await checkProfile(authUser.uid);
+
+      if (isVerified) {
+        localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(authUser));
+        await checkProfile(authUser.uid);
+        return {
+          success: true,
+          emailVerified: true,
+        };
+      } else {
+        // User exists and credentials are correct, but email is NOT verified yet
+        localStorage.removeItem(LOCAL_SESSION_USER);
+        return {
+          success: true,
+          emailVerified: false,
+          errorReason: 'unverified',
+          message: 'Please verify your email address to enter SubZap.',
+        };
+      }
+    } catch (err: any) {
+      console.warn('Firebase signInWithEmailAndPassword failed:', err);
+      let errorReason: 'not_found' | 'invalid_password' | 'general' = 'invalid_password';
+      let message = 'Invalid Credentials. Please double-check your email and password.';
+
+      if (err.code === 'auth/user-not-found') {
+        errorReason = 'not_found';
+        message = 'Account does not exist. Redirecting you to create a new account...';
+      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        errorReason = 'invalid_password';
+        message = 'Invalid Credentials. Please double-check your password.';
+      } else if (err.code === 'auth/too-many-requests') {
+        message = 'Access temporarily disabled due to multiple failed login attempts. Try again later or reset your password.';
+      } else if (err.code === 'auth/invalid-email') {
+        message = 'Please enter a valid email address.';
+      } else if (err.message) {
+        message = err.message;
+      }
 
       return {
-        success: true,
-        account,
-      };
-    } catch (err: any) {
-      return {
         success: false,
-        errorReason: 'general',
-        message: err.message || 'Authentication failed. Please try again.',
+        errorReason,
+        message,
       };
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Register with credentials
-  const registerWithCredentials = async (data: {
+  // Real Firebase Authentication: Email & Password Sign Up with Verification Email
+  const signUpWithEmail = async (data: {
     fullName: string;
-    identity: string;
-    identityType: 'email' | 'phone';
+    email: string;
     password: string;
-  }): Promise<AuthUser> => {
+  }): Promise<{ success: boolean; error?: string; code?: string; user?: AuthUser }> => {
     setIsLoading(true);
     try {
-      const account = await createRegisteredAccount(data);
+      const trimmedEmail = data.email.trim();
+      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, data.password);
+      const fbUser = userCredential.user;
+
+      // Update Firebase Auth display name
+      if (data.fullName.trim()) {
+        try {
+          await updateProfile(fbUser, { displayName: data.fullName.trim() });
+        } catch (e) {
+          console.warn('Could not set displayName on user:', e);
+        }
+      }
+
+      // Dispatch real Firebase Email Verification link
+      try {
+        await sendEmailVerification(fbUser);
+      } catch (emailErr) {
+        console.warn('Error sending initial verification email:', emailErr);
+      }
+
       const authUser: AuthUser = {
-        uid: account.id,
-        email: account.identityType === 'email' ? account.identity : null,
-        phoneNumber: account.identityType === 'phone' ? account.identity : null,
-        displayName: account.fullName,
-        providerType: account.identityType,
+        uid: fbUser.uid,
+        email: fbUser.email,
+        displayName: data.fullName.trim() || fbUser.displayName,
+        photoURL: fbUser.photoURL,
+        providerType: 'email',
+        emailVerified: false, // Unverified initially
       };
 
+      // Set user so the "Verify your email" view can identify the user and poll/reload
       setUser(authUser);
-      localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(authUser));
+      localStorage.removeItem(LOCAL_SESSION_USER);
 
-      // Create initial profile for user with their verified full name
+      // Create initial profile in Firestore
       const initialProfile: UserProfile = {
-        userId: account.id,
-        fullName: account.fullName,
-        identity: account.identity,
-        authProvider: account.identityType,
+        userId: fbUser.uid,
+        fullName: data.fullName.trim(),
+        identity: trimmedEmail,
+        authProvider: 'email',
         targetMonthlyBudget: 5000,
         averageMonthlyExpense: 45000,
         financialGoal: 'Moderate Tracking',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      await saveUserProfile(initialProfile);
-      setUserProfile(initialProfile);
-      setNeedsOnboarding(false);
+      saveUserProfile(initialProfile).catch(console.warn);
 
-      return authUser;
+      return {
+        success: true,
+        user: authUser,
+      };
+    } catch (err: any) {
+      console.warn('Firebase createUserWithEmailAndPassword failed:', err);
+      let message = 'Could not create account. Please try again.';
+      if (err.code === 'auth/email-already-in-use') {
+        message = 'An account with this email already exists. Please Sign In.';
+      } else if (err.code === 'auth/weak-password') {
+        message = 'Password must be at least 8 characters long and contain mixed characters.';
+      } else if (err.code === 'auth/invalid-email') {
+        message = 'Please enter a valid email address.';
+      } else if (err.message) {
+        message = err.message;
+      }
+
+      return {
+        success: false,
+        code: err.code,
+        error: message,
+      };
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Self-Service Forgot Password Reset
-  const resetUserPassword = async (identity: string, newPassword: string): Promise<boolean> => {
+  // Check whether Firebase user's email is verified
+  const checkEmailVerified = async (): Promise<boolean> => {
     setIsLoading(true);
     try {
-      return await updateAccountPassword(identity, newPassword);
+      if (auth.currentUser) {
+        await auth.currentUser.reload();
+        const verified = Boolean(auth.currentUser.emailVerified);
+        if (verified) {
+          const verifiedUser: AuthUser = {
+            uid: auth.currentUser.uid,
+            email: auth.currentUser.email,
+            phoneNumber: auth.currentUser.phoneNumber,
+            displayName: auth.currentUser.displayName,
+            photoURL: auth.currentUser.photoURL,
+            providerType: 'email',
+            emailVerified: true,
+          };
+          setUser(verifiedUser);
+          localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(verifiedUser));
+          await checkProfile(verifiedUser.uid);
+          return true;
+        }
+      }
+      return false;
+    } catch (err) {
+      console.warn('checkEmailVerified error:', err);
+      return false;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Resend real Firebase verification email
+  const resendVerificationEmail = async (): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    try {
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        return { success: true };
+      }
+      return { success: false, error: 'No active account session found. Please sign in.' };
+    } catch (err: any) {
+      console.warn('resendVerificationEmail error:', err);
+      let errorMsg = 'Failed to resend verification email.';
+      if (err.code === 'auth/too-many-requests') {
+        errorMsg = 'Too many requests. Please wait a minute before requesting another email.';
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      return { success: false, error: errorMsg };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Real Firebase Password Reset Email
+  const sendPasswordReset = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      return { success: true };
+    } catch (err: any) {
+      console.warn('sendPasswordResetEmail error:', err);
+      let message = 'Failed to dispatch password reset email.';
+      if (err.code === 'auth/user-not-found') {
+        message = 'No registered account found with that email address.';
+      } else if (err.code === 'auth/invalid-email') {
+        message = 'Please enter a valid email address.';
+      } else if (err.message) {
+        message = err.message;
+      }
+      return { success: false, error: message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Credentials wrapper for backward compatibility
+  const loginWithCredentials = async (
+    identity: string, 
+    passwordAttempt: string
+  ): Promise<LoginResult> => {
+    if (identity.includes('@')) {
+      return loginWithEmail(identity, passwordAttempt);
+    }
+    return {
+      success: false,
+      errorReason: 'invalid_password',
+      message: 'Please sign in with your registered email address.',
+    };
+  };
+
+  const registerWithCredentials = async (data: {
+    fullName: string;
+    identity: string;
+    identityType: 'email' | 'phone';
+    password: string;
+  }): Promise<AuthUser> => {
+    const res = await signUpWithEmail({
+      fullName: data.fullName,
+      email: data.identity,
+      password: data.password,
+    });
+    if (!res.success || !res.user) {
+      throw new Error(res.error || 'Registration failed');
+    }
+    return res.user;
+  };
+
+  const resetUserPassword = async (identity: string, _newPassword: string): Promise<boolean> => {
+    const res = await sendPasswordReset(identity);
+    return res.success;
   };
 
   // Dispatch Real OTP Verification Code via configured Firebase Auth provider
@@ -376,6 +548,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         phoneNumber: type === 'phone' ? identity : null,
         displayName: identity.split('@')[0] || 'SubZap Member',
         providerType: type,
+        emailVerified: true,
       };
 
       setUser(verifiedUser);
@@ -405,6 +578,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         uid: currentUid,
         displayName: data.fullName,
         providerType: 'demo',
+        emailVerified: true,
       };
       setUser(demoUser);
       localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(demoUser));
@@ -438,8 +612,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         needsOnboarding,
         setNeedsOnboarding,
         loginWithGoogle,
+        loginWithEmail,
         loginWithCredentials,
+        signUpWithEmail,
         registerWithCredentials,
+        checkEmailVerified,
+        resendVerificationEmail,
+        sendPasswordReset,
         resetUserPassword,
         sendVerificationOtp,
         verifyOtpCode,
