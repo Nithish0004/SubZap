@@ -9,7 +9,7 @@ import {
 import { 
   getFirestore, 
   doc, 
-  getDocFromServer 
+  getDoc
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -23,23 +23,24 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Initialize Firestore Database (using provisioned database ID or default fallback)
-export const db = firebaseConfig.firestoreDatabaseId 
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+// Initialize Firestore Database strictly with project database ID per Firebase Integration Skill guidelines
+const configWithDb = firebaseConfig as typeof firebaseConfig & { firestoreDatabaseId?: string };
+export const db = configWithDb.firestoreDatabaseId 
+  ? getFirestore(app, configWithDb.firestoreDatabaseId) 
   : getFirestore(app);
 
-// Connection test helper per Firebase Integration Skill guidelines
+// Connection test helper
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    // Testing read on metadata path
-    await getDocFromServer(doc(db, '_connection_test', 'ping'));
+    await getDoc(doc(db, 'test', 'connection'));
     return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firestore client is currently offline or unreachable.');
+  } catch (error: any) {
+    if (
+      error?.code === 'unavailable' ||
+      (error instanceof Error && (error.message.includes('offline') || error.message.includes('unavailable')))
+    ) {
       return false;
     }
-    // Any permission or missing doc error still verifies network reachability
     return true;
   }
 }

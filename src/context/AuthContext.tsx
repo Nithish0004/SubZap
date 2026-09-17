@@ -11,7 +11,7 @@ import {
   updateProfile,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { auth, googleProvider, testFirestoreConnection } from '../lib/firebase';
+import { auth, googleProvider } from '../lib/firebase';
 import { UserProfile } from '../types';
 import { fetchUserProfile, saveUserProfile } from '../services/profileService';
 import { 
@@ -102,11 +102,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Derive client-side encryption key tied to user's verified identity/UID
   const userSecretKey = user ? `subzap-key-${user.uid}` : 'subzap-fallback-key';
 
-  // Test connection on mount
-  useEffect(() => {
-    testFirestoreConnection().catch(console.warn);
-  }, []);
-
   // Sync auth state listener from Firebase Auth
   useEffect(() => {
     // 1. Check local session cache first
@@ -183,7 +178,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Google Login OAuth Integration
   const loginWithGoogle = async () => {
-    setIsLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
@@ -216,14 +210,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         throw error;
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Real Firebase Authentication: Email & Password Sign In
   const loginWithEmail = async (email: string, passwordAttempt: string): Promise<LoginResult> => {
-    setIsLoading(true);
     try {
       const trimmedEmail = email.trim();
       const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, passwordAttempt);
@@ -256,24 +247,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           success: true,
           emailVerified: false,
           errorReason: 'unverified',
-          message: 'Please verify your email address to enter SubZap.',
+          message: 'Please verify your email before signing in.',
         };
       }
     } catch (err: any) {
       console.warn('Firebase signInWithEmailAndPassword failed:', err);
-      let errorReason: 'not_found' | 'invalid_password' | 'general' = 'invalid_password';
-      let message = 'Invalid Credentials. Please double-check your email and password.';
+      let errorReason: 'not_found' | 'invalid_password' | 'unverified' | 'general' = 'general';
+      let message = 'Invalid email or password. Please check your details or create an account.';
 
       if (err.code === 'auth/user-not-found') {
         errorReason = 'not_found';
-        message = 'Account does not exist. Redirecting you to create a new account...';
-      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        message = 'No account found with this email. Please sign up first.';
+      } else if (err.code === 'auth/wrong-password') {
         errorReason = 'invalid_password';
-        message = 'Invalid Credentials. Please double-check your password.';
+        message = 'Incorrect email or password. Please try again.';
+      } else if (err.code === 'auth/invalid-credential') {
+        errorReason = 'invalid_password';
+        message = 'Invalid email or password. Please check your credentials or create an account.';
       } else if (err.code === 'auth/too-many-requests') {
-        message = 'Access temporarily disabled due to multiple failed login attempts. Try again later or reset your password.';
+        message = 'Too many failed login attempts. Please try again later or reset your password.';
       } else if (err.code === 'auth/invalid-email') {
         message = 'Please enter a valid email address.';
+      } else if (err.code === 'auth/user-disabled') {
+        message = 'This account has been disabled. Please contact support.';
       } else if (err.message) {
         message = err.message;
       }
@@ -283,8 +279,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         errorReason,
         message,
       };
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -294,7 +288,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string;
     password: string;
   }): Promise<{ success: boolean; error?: string; code?: string; user?: AuthUser }> => {
-    setIsLoading(true);
     try {
       const trimmedEmail = data.email.trim();
       const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, data.password);
@@ -351,12 +344,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Firebase createUserWithEmailAndPassword failed:', err);
       let message = 'Could not create account. Please try again.';
       if (err.code === 'auth/email-already-in-use') {
-        message = 'An account with this email already exists. Please Sign In.';
+        message = 'An account with this email already exists. Please sign in instead.';
       } else if (err.code === 'auth/weak-password') {
-        message = 'Password must be at least 8 characters long and contain mixed characters.';
+        message = 'Password is too weak. Please ensure it has at least 8 characters with letters, numbers, and special symbols.';
       } else if (err.code === 'auth/invalid-email') {
         message = 'Please enter a valid email address.';
-      } else if (err.message) {
+      } else if (err.code === 'auth/operation-not-allowed') {
+        message = 'Email/password sign-up is not enabled in Firebase Console. Please enable Email/Password provider in Authentication settings.';
+      } else if (err.message && !err.message.includes('Firebase:')) {
         message = err.message;
       }
 
@@ -365,14 +360,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         code: err.code,
         error: message,
       };
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Check whether Firebase user's email is verified
   const checkEmailVerified = async (): Promise<boolean> => {
-    setIsLoading(true);
     try {
       if (auth.currentUser) {
         await auth.currentUser.reload();
@@ -397,14 +389,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err) {
       console.warn('checkEmailVerified error:', err);
       return false;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Resend real Firebase verification email
   const resendVerificationEmail = async (): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
     try {
       if (auth.currentUser) {
         await sendEmailVerification(auth.currentUser);
@@ -415,35 +404,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('resendVerificationEmail error:', err);
       let errorMsg = 'Failed to resend verification email.';
       if (err.code === 'auth/too-many-requests') {
-        errorMsg = 'Too many requests. Please wait a minute before requesting another email.';
-      } else if (err.message) {
+        errorMsg = 'Too many requests. Please wait a minute before requesting another verification email.';
+      } else if (err.message && !err.message.includes('Firebase:')) {
         errorMsg = err.message;
       }
       return { success: false, error: errorMsg };
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Real Firebase Password Reset Email
   const sendPasswordReset = async (email: string): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
     try {
       await sendPasswordResetEmail(auth, email.trim());
       return { success: true };
     } catch (err: any) {
       console.warn('sendPasswordResetEmail error:', err);
-      let message = 'Failed to dispatch password reset email.';
+      let message = 'Failed to send password reset email.';
       if (err.code === 'auth/user-not-found') {
-        message = 'No registered account found with that email address.';
+        message = 'No account found with this email. Please sign up first.';
       } else if (err.code === 'auth/invalid-email') {
         message = 'Please enter a valid email address.';
-      } else if (err.message) {
+      } else if (err.code === 'auth/too-many-requests') {
+        message = 'Too many requests. Please wait a moment before trying again.';
+      } else if (err.message && !err.message.includes('Firebase:')) {
         message = err.message;
       }
       return { success: false, error: message };
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -490,13 +476,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     type: 'email' | 'phone',
     purpose: 'signup' | 'login_recovery' | 'forgot_password' = 'signup'
   ): Promise<OtpDeliveryResult> => {
-    setIsLoading(true);
-    try {
-      const result = await sendRealOtp(identity, type, purpose);
-      return result;
-    } finally {
-      setIsLoading(false);
-    }
+    return await sendRealOtp(identity, type, purpose);
   };
 
   // Verify Real OTP Code against configured Firebase Auth provider
@@ -506,12 +486,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     code: string,
     purpose: 'signup' | 'login_recovery' | 'forgot_password' = 'signup'
   ): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
-    try {
-      return await verifyRealOtp(identity, type, code, purpose);
-    } finally {
-      setIsLoading(false);
-    }
+    return await verifyRealOtp(identity, type, code, purpose);
   };
 
   // Verify OTP and provision / authenticate cloud account
@@ -521,42 +496,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     enteredCode: string,
     purpose: 'signup' | 'login_recovery' | 'forgot_password' = 'signup'
   ) => {
-    setIsLoading(true);
-    try {
-      const verification = await verifyRealOtp(identity, type, enteredCode, purpose);
-      if (!verification.success) {
-        throw new Error(verification.error || 'Invalid verification code. Please check and try again.');
-      }
-
-      // Provision Firebase session or derive authenticated UID
-      let uid = '';
-      if (verification.user?.uid) {
-        uid = verification.user.uid;
-      } else {
-        try {
-          const anon = await signInAnonymously(auth);
-          uid = anon.user.uid;
-        } catch (e) {
-          // Deterministic cloud hash UID fallback
-          uid = `usr_${btoa(identity).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
-        }
-      }
-
-      const verifiedUser: AuthUser = {
-        uid,
-        email: type === 'email' ? identity : null,
-        phoneNumber: type === 'phone' ? identity : null,
-        displayName: identity.split('@')[0] || 'SubZap Member',
-        providerType: type,
-        emailVerified: true,
-      };
-
-      setUser(verifiedUser);
-      localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(verifiedUser));
-      await checkProfile(verifiedUser.uid);
-    } finally {
-      setIsLoading(false);
+    const verification = await verifyRealOtp(identity, type, enteredCode, purpose);
+    if (!verification.success) {
+      throw new Error(verification.error || 'Invalid verification code. Please check and try again.');
     }
+
+    // Provision Firebase session or derive authenticated UID
+    let uid = '';
+    if (verification.user?.uid) {
+      uid = verification.user.uid;
+    } else {
+      try {
+        const anon = await signInAnonymously(auth);
+        uid = anon.user.uid;
+      } catch (e) {
+        // Deterministic cloud hash UID fallback
+        uid = `usr_${btoa(identity).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`;
+      }
+    }
+
+    const verifiedUser: AuthUser = {
+      uid,
+      email: type === 'email' ? identity : null,
+      phoneNumber: type === 'phone' ? identity : null,
+      displayName: identity.split('@')[0] || 'SubZap Member',
+      providerType: type,
+      emailVerified: true,
+    };
+
+    setUser(verifiedUser);
+    localStorage.setItem(LOCAL_SESSION_USER, JSON.stringify(verifiedUser));
+    await checkProfile(verifiedUser.uid);
   };
 
   // Onboarding profiling completion

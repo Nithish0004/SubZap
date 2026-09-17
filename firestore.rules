@@ -43,5 +43,10 @@ service cloud.firestore {
       allow create, update: if isValidId(otpId);
       allow delete: if false;
     }
+
+    // Connection test path
+    match /test/{testId} {
+      allow get: if true;
+    }
   }
 }

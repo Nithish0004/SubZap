@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { GoogleIcon } from './GoogleIcon';
-import { BotVerificationWidget } from './BotVerificationWidget';
 import { 
   PasswordRequirementsBar, 
   PASSWORD_COMPLEXITY_REGEX 
@@ -38,7 +37,10 @@ export const AuthGatewayModal: React.FC = () => {
   } = useAuth();
 
   // Core view router
-  const [viewMode, setViewMode] = useState<AuthViewMode>('signin');
+  const [viewMode, setViewMode] = useState<AuthViewMode>(() => {
+    if (user && !user.emailVerified) return 'verify_email';
+    return 'signin';
+  });
 
   // Input fields for Sign In / Sign Up
   const [emailInput, setEmailInput] = useState('');
@@ -56,12 +58,12 @@ export const AuthGatewayModal: React.FC = () => {
   } | null>(null);
   const [resendTimer, setResendTimer] = useState<number>(0);
 
+  // Unverified account notice on Sign In
+  const [unverifiedNotice, setUnverifiedNotice] = useState(false);
+  const [resendSuccessNotice, setResendSuccessNotice] = useState('');
+
   // Existing account guidance on signup
   const [existingAccountEmail, setExistingAccountEmail] = useState<string | null>(null);
-
-  // Bot Verification (Turnstile / reCAPTCHA)
-  const [botVerified, setBotVerified] = useState(false);
-  const [botCheckError, setBotCheckError] = useState(false);
 
   // Password validation shaking effect
   const [passwordComplexityError, setPasswordComplexityError] = useState(false);
@@ -71,17 +73,18 @@ export const AuthGatewayModal: React.FC = () => {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSuccessNotice, setForgotSuccessNotice] = useState('');
 
-  // General loading & error
+  // General loading & error & action tracking
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [actionType, setActionType] = useState<string>('');
   const [formError, setFormError] = useState('');
 
-  // If user is already logged in with an unverified email, transition straight to verify_email
+  // If user is in unverified state, route to verify_email
   useEffect(() => {
     if (user && !user.emailVerified) {
-      setViewMode('verify_email');
       if (user.email) {
         setVerificationEmail(user.email);
       }
+      setViewMode('verify_email');
     }
   }, [user]);
 
@@ -108,9 +111,10 @@ export const AuthGatewayModal: React.FC = () => {
     }, 600);
   };
 
-  // Google OAuth
+  // Google OAuth Login
   const handleGoogleSignIn = async () => {
     setIsSubmitting(true);
+    setActionType('google');
     setFormError('');
     try {
       await loginWithGoogle();
@@ -118,6 +122,7 @@ export const AuthGatewayModal: React.FC = () => {
       setFormError(err.message || 'Google sign-in was cancelled or encountered an error.');
     } finally {
       setIsSubmitting(false);
+      setActionType('');
     }
   };
 
@@ -125,11 +130,13 @@ export const AuthGatewayModal: React.FC = () => {
   const handleSignInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
+    setUnverifiedNotice(false);
+    setResendSuccessNotice('');
     setExistingAccountEmail(null);
 
     const trimmedEmail = emailInput.trim();
     if (!trimmedEmail) {
-      setFormError('Please enter your registered email address.');
+      setFormError('Please enter your email address.');
       return;
     }
 
@@ -139,11 +146,12 @@ export const AuthGatewayModal: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    setActionType('signin');
     try {
       const result = await loginWithEmail(trimmedEmail, password);
 
       if (!result.success) {
-        setFormError(result.message || 'Invalid credentials. Please double-check your email and password.');
+        setFormError(result.message || 'Invalid email or password. Please check your details or create an account.');
         return;
       }
 
@@ -153,14 +161,16 @@ export const AuthGatewayModal: React.FC = () => {
         setViewMode('verify_email');
         setVerificationNotice({
           type: 'info',
-          message: 'Please verify your email address to enter SubZap.',
+          message: 'Please verify your email to access your SubZap dashboard. A verification link was sent to your inbox.',
         });
+        return;
       }
-      // If verified, user state will update in AuthContext and App.tsx automatically unlocks the dashboard
+      // If verified, AuthContext updates user and App.tsx automatically unlocks the dashboard
     } catch (err: any) {
       setFormError(err.message || 'Authentication error occurred.');
     } finally {
       setIsSubmitting(false);
+      setActionType('');
     }
   };
 
@@ -177,7 +187,7 @@ export const AuthGatewayModal: React.FC = () => {
       return;
     }
 
-    // 2. Validate Email
+    // 2. Validate Email format
     const trimmedEmail = emailInput.trim();
     const rfcEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!trimmedEmail || !rfcEmailRegex.test(trimmedEmail)) {
@@ -193,21 +203,14 @@ export const AuthGatewayModal: React.FC = () => {
       return;
     }
 
-    // 4. Validate Confirm Password
+    // 4. Validate Confirm Password Match
     if (password !== confirmPassword) {
       setFormError('Passwords do not match. Please verify both fields.');
       return;
     }
 
-    // 5. Validate Bot Protection
-    if (!botVerified) {
-      setBotCheckError(true);
-      setFormError('Please complete the bot security verification to continue.');
-      setTimeout(() => setBotCheckError(false), 2000);
-      return;
-    }
-
     setIsSubmitting(true);
+    setActionType('signup');
     try {
       const res = await signUpWithEmail({
         fullName: fullName.trim(),
@@ -218,32 +221,36 @@ export const AuthGatewayModal: React.FC = () => {
       if (!res.success) {
         if (res.code === 'auth/email-already-in-use') {
           setExistingAccountEmail(trimmedEmail);
-          setFormError('An account with this email already exists.');
+          setFormError('An account with this email already exists. Please sign in instead.');
         } else {
           setFormError(res.error || 'Could not create account. Please try again.');
         }
         return;
       }
 
-      // DO NOT open dashboard immediately. Show the verification screen!
+      // Transition to real Firebase email verification view
       setVerificationEmail(trimmedEmail);
       setViewMode('verify_email');
-      setVerificationNotice(null);
+      setVerificationNotice({
+        type: 'success',
+        message: 'Account created! Please check your inbox and click the verification link, then return here and click "I\'ve Verified My Email" below.',
+      });
     } catch (err: any) {
       setFormError(err.message || 'Could not complete registration.');
     } finally {
       setIsSubmitting(false);
+      setActionType('');
     }
   };
 
   // Check Email Verification (Reload Firebase User)
   const handleCheckVerified = async () => {
     setIsSubmitting(true);
+    setActionType('check_verified');
     setVerificationNotice(null);
     try {
       const isVerified = await checkEmailVerified();
       if (isVerified) {
-        // App.tsx will automatically detect user.emailVerified === true and unlock the dashboard
         setVerificationNotice({
           type: 'success',
           message: 'Email verified successfully! Entering SubZap...',
@@ -251,7 +258,7 @@ export const AuthGatewayModal: React.FC = () => {
       } else {
         setVerificationNotice({
           type: 'error',
-          message: 'Email is not verified yet. Please check your inbox and click the verification link, then click here again.',
+          message: 'Your email has not been verified yet. Please check your inbox and click the verification link.',
         });
       }
     } catch (err: any) {
@@ -261,6 +268,7 @@ export const AuthGatewayModal: React.FC = () => {
       });
     } finally {
       setIsSubmitting(false);
+      setActionType('');
     }
   };
 
@@ -268,32 +276,67 @@ export const AuthGatewayModal: React.FC = () => {
   const handleResendVerification = async () => {
     if (resendTimer > 0 || isSubmitting) return;
     setIsSubmitting(true);
+    setActionType('resend_email');
     setVerificationNotice(null);
+    setResendSuccessNotice('');
     try {
       const res = await resendVerificationEmail();
       if (res.success) {
         setResendTimer(45);
-        setVerificationNotice({
-          type: 'success',
-          message: 'Verification email resent! Please check your inbox and spam folder.',
-        });
+        const msg = 'Verification email sent! Please check your inbox and spam folder.';
+        if (viewMode === 'verify_email') {
+          setVerificationNotice({
+            type: 'success',
+            message: msg,
+          });
+        } else {
+          setResendSuccessNotice(msg);
+        }
       } else {
-        setVerificationNotice({
-          type: 'error',
-          message: res.error || 'Failed to resend verification email.',
-        });
+        const errorMsg = res.error || 'Failed to resend verification email.';
+        if (viewMode === 'verify_email') {
+          setVerificationNotice({
+            type: 'error',
+            message: errorMsg,
+          });
+        } else {
+          setFormError(errorMsg);
+        }
       }
     } catch (err: any) {
-      setVerificationNotice({
-        type: 'error',
-        message: 'Failed to resend verification email.',
-      });
+      const errorMsg = 'Failed to resend verification email.';
+      if (viewMode === 'verify_email') {
+        setVerificationNotice({
+          type: 'error',
+          message: errorMsg,
+        });
+      } else {
+        setFormError(errorMsg);
+      }
+    } finally {
+      setIsSubmitting(false);
+      setActionType('');
+    }
+  };
+
+  // Back to Sign In from Email Verification View
+  const handleBackToSignIn = async () => {
+    setIsSubmitting(true);
+    try {
+      await signOut();
+      setVerificationNotice(null);
+      setFormError('');
+      setUnverifiedNotice(false);
+      setResendSuccessNotice('');
+      setViewMode('signin');
+    } catch (e) {
+      setViewMode('signin');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Forgot Password: Dispatch Real Firebase Password Reset Email
+  // Forgot Password: Send Real Firebase Password Reset Email
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -306,6 +349,7 @@ export const AuthGatewayModal: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    setActionType('forgot_password');
     try {
       const res = await sendPasswordReset(targetEmail);
       if (res.success) {
@@ -317,6 +361,7 @@ export const AuthGatewayModal: React.FC = () => {
       setFormError(err.message || 'Error sending password reset email.');
     } finally {
       setIsSubmitting(false);
+      setActionType('');
     }
   };
 
@@ -338,9 +383,9 @@ export const AuthGatewayModal: React.FC = () => {
         {/* Subtle top accent border */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400" />
 
-        {/* Brand Header */}
+        {/* Clean Brand Header */}
         <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-0.5 shadow-lg shadow-indigo-500/25 mb-3">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-0.5 shadow-lg shadow-indigo-500/25 mb-2.5">
             <div className="w-full h-full bg-white dark:bg-slate-950 rounded-[14px] flex items-center justify-center">
               <Zap className="w-6 h-6 text-indigo-600 dark:text-indigo-400 fill-indigo-600/20" />
             </div>
@@ -352,36 +397,91 @@ export const AuthGatewayModal: React.FC = () => {
 
         {/* Global Error Banner */}
         {formError && (
-          <div className="mb-4 flex items-start gap-2.5 p-3 text-xs text-rose-800 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/70 rounded-xl animate-shake">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-semibold">{formError}</p>
-              {/* Existing Account Prompt guidance */}
-              {existingAccountEmail && viewMode === 'signup' && (
-                <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-900/50 flex items-center justify-between">
-                  <span className="text-rose-700 dark:text-rose-300">Would you like to sign in instead?</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailInput(existingAccountEmail);
-                      setExistingAccountEmail(null);
-                      setFormError('');
-                      setViewMode('signin');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer transition-colors shadow-xs"
-                  >
-                    Sign In with this email
-                  </button>
-                </div>
-              )}
+          <div className="mb-4 p-3 text-xs text-rose-800 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/70 rounded-xl space-y-2">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold">{formError}</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setFormError('');
+                  setExistingAccountEmail(null);
+                  setUnverifiedNotice(false);
+                }} 
+                className="text-rose-400 hover:text-rose-700 dark:hover:text-rose-200 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <button 
-              type="button" 
-              onClick={() => {
-                setFormError('');
-                setExistingAccountEmail(null);
-              }} 
-              className="text-rose-400 hover:text-rose-700 dark:hover:text-rose-200 cursor-pointer"
+
+            {/* If unverified account error, provide options to resend or go to verification screen */}
+            {unverifiedNotice && (
+              <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/60 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSubmitting || resendTimer > 0}
+                  onClick={handleResendVerification}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs cursor-pointer transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  {isSubmitting && actionType === 'resend_email' ? (
+                    <>
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      <span>Sending verification email...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3 h-3" />
+                      <span>{resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Verification Email'}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormError('');
+                    setViewMode('verify_email');
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold text-xs cursor-pointer hover:bg-rose-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Go to Verification Screen
+                </button>
+              </div>
+            )}
+
+            {/* Existing Account Prompt guidance */}
+            {existingAccountEmail && viewMode === 'signup' && (
+              <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/60 flex items-center justify-between">
+                <span className="text-rose-700 dark:text-rose-300">Would you like to sign in instead?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailInput(existingAccountEmail);
+                    setExistingAccountEmail(null);
+                    setFormError('');
+                    setViewMode('signin');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer transition-colors shadow-xs"
+                >
+                  Sign In with this email
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Resend success notice outside verification view */}
+        {resendSuccessNotice && viewMode !== 'verify_email' && (
+          <div className="mb-4 p-3 rounded-xl text-xs bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 flex items-start gap-2.5">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold">{resendSuccessNotice}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setResendSuccessNotice('')}
+              className="text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-200 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -397,7 +497,7 @@ export const AuthGatewayModal: React.FC = () => {
             <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-750 text-xs font-semibold">
               <button
                 type="button"
-                className="py-2 rounded-lg bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs text-center cursor-default"
+                className="py-2 rounded-lg bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs text-center cursor-default font-bold"
               >
                 Sign In
               </button>
@@ -406,6 +506,7 @@ export const AuthGatewayModal: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setFormError('');
+                  setUnverifiedNotice(false);
                   setExistingAccountEmail(null);
                   setViewMode('signup');
                 }}
@@ -427,20 +528,20 @@ export const AuthGatewayModal: React.FC = () => {
               <span>Continue with Google</span>
             </button>
 
-            {/* Correctly Centered Divider */}
-            <div className="relative my-4 flex items-center">
-              <div className="flex-grow border-t border-slate-200 dark:border-slate-800" />
-              <span className="shrink-0 px-3 text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                Or continue with email
+            {/* Perfectly Centered Divider */}
+            <div className="w-full my-4 flex items-center justify-center">
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+              <span className="shrink-0 px-3 text-xs font-medium text-slate-400 dark:text-slate-500 select-none text-center">
+                Or with Email or Mobile
               </span>
-              <div className="flex-grow border-t border-slate-200 dark:border-slate-800" />
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
             </div>
 
             {/* Sign In Form */}
             <form onSubmit={handleSignInSubmit} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Registered Email Address
+                  Email Address
                 </label>
                 <div className="relative flex items-center">
                   <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -486,6 +587,7 @@ export const AuthGatewayModal: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setFormError('');
+                      setUnverifiedNotice(false);
                       setForgotSuccessNotice('');
                       setForgotEmail(emailInput);
                       setViewMode('forgot_password');
@@ -504,8 +606,11 @@ export const AuthGatewayModal: React.FC = () => {
                 disabled={isSubmitting}
                 className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-60 cursor-pointer mt-2"
               >
-                {isSubmitting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                {isSubmitting && actionType === 'signin' ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Signing in...</span>
+                  </>
                 ) : (
                   <>
                     <span>Sign In</span>
@@ -523,6 +628,7 @@ export const AuthGatewayModal: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setFormError('');
+                  setUnverifiedNotice(false);
                   setExistingAccountEmail(null);
                   setViewMode('signup');
                 }}
@@ -554,7 +660,7 @@ export const AuthGatewayModal: React.FC = () => {
               </button>
               <button
                 type="button"
-                className="py-2 rounded-lg bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs text-center cursor-default"
+                className="py-2 rounded-lg bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs text-center cursor-default font-bold"
               >
                 Create Account
               </button>
@@ -572,13 +678,13 @@ export const AuthGatewayModal: React.FC = () => {
               <span>Continue with Google</span>
             </button>
 
-            {/* Correctly Centered Divider */}
-            <div className="relative my-4 flex items-center">
-              <div className="flex-grow border-t border-slate-200 dark:border-slate-800" />
-              <span className="shrink-0 px-3 text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                Or continue with email
+            {/* Perfectly Centered Divider */}
+            <div className="w-full my-4 flex items-center justify-center">
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+              <span className="shrink-0 px-3 text-xs font-medium text-slate-400 dark:text-slate-500 select-none text-center">
+                Or with Email or Mobile
               </span>
-              <div className="flex-grow border-t border-slate-200 dark:border-slate-800" />
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
             </div>
 
             <form onSubmit={handleSignUpSubmit} className="space-y-3.5">
@@ -708,18 +814,6 @@ export const AuthGatewayModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bot Protection Widget */}
-              <div>
-                <BotVerificationWidget
-                  isVerified={botVerified}
-                  onVerify={() => {
-                    setBotVerified(true);
-                    setBotCheckError(false);
-                  }}
-                  hasError={botCheckError}
-                />
-              </div>
-
               {/* Submit Registration Button */}
               <button
                 id="signup-submit-btn"
@@ -727,11 +821,14 @@ export const AuthGatewayModal: React.FC = () => {
                 disabled={isSubmitting}
                 className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-60 cursor-pointer mt-1"
               >
-                {isSubmitting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                {isSubmitting && actionType === 'signup' ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Creating account...</span>
+                  </>
                 ) : (
                   <>
-                    <span>Create Account & Verify</span>
+                    <span>Create Account</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -767,8 +864,8 @@ export const AuthGatewayModal: React.FC = () => {
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
                 Verify your email
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                We sent a verification link to:
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-sm mx-auto">
+                We've sent a verification link to your email address. Please verify your email before continuing to SubZap.
               </p>
               <div className="py-2 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 font-mono text-sm font-semibold text-slate-800 dark:text-slate-200 text-center break-all">
                 {verificationEmail || user?.email || 'your email'}
@@ -789,7 +886,7 @@ export const AuthGatewayModal: React.FC = () => {
                 ) : (
                   <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
                 )}
-                <span>{verificationNotice.message}</span>
+                <span className="leading-relaxed">{verificationNotice.message}</span>
               </div>
             )}
 
@@ -802,8 +899,11 @@ export const AuthGatewayModal: React.FC = () => {
                 onClick={handleCheckVerified}
                 className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60"
               >
-                {isSubmitting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                {isSubmitting && actionType === 'check_verified' ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Checking verification...</span>
+                  </>
                 ) : (
                   <>
                     <span>I've Verified My Email</span>
@@ -819,24 +919,28 @@ export const AuthGatewayModal: React.FC = () => {
                 onClick={handleResendVerification}
                 className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSubmitting ? 'animate-spin' : ''}`} />
-                <span>{resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Verification Email'}</span>
+                {isSubmitting && actionType === 'resend_email' ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Sending verification email...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>{resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Verification Email'}</span>
+                  </>
+                )}
               </button>
-            </div>
 
-            {/* Switch Account */}
-            <div className="pt-2 text-center text-xs">
               <button
+                id="btn-back-to-signin"
                 type="button"
-                onClick={async () => {
-                  await signOut();
-                  setVerificationNotice(null);
-                  setFormError('');
-                  setViewMode('signin');
-                }}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:underline cursor-pointer"
+                disabled={isSubmitting}
+                onClick={handleBackToSignIn}
+                className="w-full py-2 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
               >
-                ← Sign in with a different account
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
               </button>
             </div>
           </div>
@@ -876,7 +980,7 @@ export const AuthGatewayModal: React.FC = () => {
               <div className="space-y-4 py-2">
                 <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span>{forgotSuccessNotice}</span>
+                  <span className="leading-relaxed">{forgotSuccessNotice}</span>
                 </div>
                 <button
                   type="button"
@@ -917,8 +1021,11 @@ export const AuthGatewayModal: React.FC = () => {
                   disabled={isSubmitting}
                   className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
                 >
-                  {isSubmitting ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  {isSubmitting && actionType === 'forgot_password' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Sending reset email...</span>
+                    </>
                   ) : (
                     <>
                       <span>Send Password Reset Link</span>
