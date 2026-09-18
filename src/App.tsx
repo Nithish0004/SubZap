@@ -56,6 +56,21 @@ export default function App() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [alerts, setAlerts] = useState<InAppNotification[]>([]);
 
+  // Auth gatekeeper and transition states
+  const isAuthedAndVerified = Boolean(user && user.emailVerified);
+  const [showDashboard, setShowDashboard] = useState(isAuthedAndVerified);
+
+  useEffect(() => {
+    if (isAuthedAndVerified && !showDashboard) {
+      const timer = setTimeout(() => {
+        setShowDashboard(true);
+      }, 1200);
+      return () => clearTimeout(timer);
+    } else if (!isAuthedAndVerified && showDashboard) {
+      setShowDashboard(false);
+    }
+  }, [isAuthedAndVerified, showDashboard]);
+
   // 2. Fetch and synchronize encrypted subscriptions from Firestore when user logs in and is verified
   useEffect(() => {
     if (!user || !user.emailVerified) return;
@@ -288,12 +303,10 @@ export default function App() {
   }
 
   // Protected route check: Block access if user is not logged in or unverified
-  const isAuthedAndVerified = Boolean(user && user.emailVerified);
-
-  if (!isAuthedAndVerified) {
+  if (!showDashboard) {
     return (
       <div className="min-h-screen w-full max-w-full bg-slate-50 dark:bg-[#090D16] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white antialiased font-sans">
-        <AuthGatewayModal />
+        <AuthGatewayModal isSuccessTransition={isAuthedAndVerified} />
       </div>
     );
   }

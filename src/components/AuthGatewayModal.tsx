@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Zap, 
   Mail, 
@@ -21,10 +21,17 @@ import {
   PasswordRequirementsBar, 
   PASSWORD_COMPLEXITY_REGEX 
 } from './PasswordRequirementsBar';
+import { ZapBotMascot, MascotMood } from './ZapBotMascot';
 
 type AuthViewMode = 'signin' | 'signup' | 'verify_email' | 'forgot_password';
 
-export const AuthGatewayModal: React.FC = () => {
+interface AuthGatewayModalProps {
+  isSuccessTransition?: boolean;
+}
+
+export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({ 
+  isSuccessTransition = false 
+}) => {
   const { 
     user,
     loginWithGoogle, 
@@ -36,11 +43,19 @@ export const AuthGatewayModal: React.FC = () => {
     signOut
   } = useAuth();
 
-  // Core view router
+  // Core view mode
   const [viewMode, setViewMode] = useState<AuthViewMode>(() => {
     if (user && !user.emailVerified) return 'verify_email';
     return 'signin';
   });
+
+  // Storytelling sequence states
+  // Scene 1: Character enters (0 - 650ms)
+  // Scene 2: Character presents the form (650 - 1300ms)
+  // Scene 3: Form is ready & idle interactive state (1300ms+)
+  const [sceneStep, setSceneStep] = useState<'entering' | 'presenting' | 'interactive'>('entering');
+  const [mascotMood, setMascotMood] = useState<MascotMood>('entering');
+  const moodResetTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Input fields for Sign In / Sign Up
   const [emailInput, setEmailInput] = useState('');
@@ -78,6 +93,61 @@ export const AuthGatewayModal: React.FC = () => {
   const [actionType, setActionType] = useState<string>('');
   const [formError, setFormError] = useState('');
 
+  // Helper to trigger temporary mascot mood that reverts to idle
+  const triggerMascotMood = (mood: MascotMood, durationMs = 2500) => {
+    if (isSuccessTransition) return;
+    if (moodResetTimer.current) clearTimeout(moodResetTimer.current);
+    setMascotMood(mood);
+    moodResetTimer.current = setTimeout(() => {
+      setMascotMood('idle');
+    }, durationMs);
+  };
+
+  // Scene 1 -> Scene 2 -> Scene 3 Choreographed entrance on mount
+  useEffect(() => {
+    // If already in success transition, celebrate immediately
+    if (isSuccessTransition) {
+      setSceneStep('interactive');
+      setMascotMood('celebrating');
+      return;
+    }
+
+    // Step 1: Character enters into scene
+    const timerPresent = setTimeout(() => {
+      setSceneStep('presenting');
+      setMascotMood('presenting');
+    }, 650);
+
+    // Step 2: Form fully unfolds and character enters idle
+    const timerInteractive = setTimeout(() => {
+      setSceneStep('interactive');
+      setMascotMood('idle');
+    }, 1300);
+
+    return () => {
+      clearTimeout(timerPresent);
+      clearTimeout(timerInteractive);
+      if (moodResetTimer.current) clearTimeout(moodResetTimer.current);
+    };
+  }, [isSuccessTransition]);
+
+  // Handle Scene 5: Successful Authentication Celebration
+  useEffect(() => {
+    if (isSuccessTransition) {
+      setMascotMood('celebrating');
+    }
+  }, [isSuccessTransition]);
+
+  // Mode switcher (Sign In <-> Sign Up with character reaction)
+  const switchMode = (newMode: AuthViewMode) => {
+    if (newMode === viewMode) return;
+    setFormError('');
+    setUnverifiedNotice(false);
+    setExistingAccountEmail(null);
+    setViewMode(newMode);
+    triggerMascotMood('switching_mode', 1000);
+  };
+
   // If user is in unverified state, route to verify_email
   useEffect(() => {
     if (user && !user.emailVerified) {
@@ -101,11 +171,12 @@ export const AuthGatewayModal: React.FC = () => {
     };
   }, [resendTimer]);
 
-  // Trigger shake animation for password failure
+  // Trigger shake animation for password failure with mascot worried reaction
   const triggerPasswordShake = (message: string) => {
     setPasswordComplexityError(true);
     setShouldShakePassword(true);
     setFormError(message);
+    triggerMascotMood('worried_error', 2600);
     setTimeout(() => {
       setShouldShakePassword(false);
     }, 600);
@@ -118,8 +189,11 @@ export const AuthGatewayModal: React.FC = () => {
     setFormError('');
     try {
       await loginWithGoogle();
+      // Scene 5 celebration handled by isSuccessTransition or local trigger
+      triggerMascotMood('celebrating', 3000);
     } catch (err: any) {
       setFormError(err.message || 'Google sign-in was cancelled or encountered an error.');
+      triggerMascotMood('worried_error', 2600);
     } finally {
       setIsSubmitting(false);
       setActionType('');
@@ -137,11 +211,13 @@ export const AuthGatewayModal: React.FC = () => {
     const trimmedEmail = emailInput.trim();
     if (!trimmedEmail) {
       setFormError('Please enter your email address.');
+      triggerMascotMood('worried_error', 2200);
       return;
     }
 
     if (!password) {
       setFormError('Please enter your password.');
+      triggerMascotMood('worried_error', 2200);
       return;
     }
 
@@ -151,7 +227,8 @@ export const AuthGatewayModal: React.FC = () => {
       const result = await loginWithEmail(trimmedEmail, password);
 
       if (!result.success) {
-        setFormError(result.message || 'Invalid email or password. Please check your details or create an account.');
+        setFormError(result.message || 'Invalid email or password. Please check your credentials or create an account.');
+        triggerMascotMood('worried_error', 2600);
         return;
       }
 
@@ -159,15 +236,19 @@ export const AuthGatewayModal: React.FC = () => {
       if (!result.emailVerified) {
         setVerificationEmail(trimmedEmail);
         setViewMode('verify_email');
+        triggerMascotMood('idle', 1000);
         setVerificationNotice({
           type: 'info',
           message: 'Please verify your email to access your SubZap dashboard. A verification link was sent to your inbox.',
         });
         return;
       }
-      // If verified, AuthContext updates user and App.tsx automatically unlocks the dashboard
+
+      // Successful verified sign in -> celebrate!
+      triggerMascotMood('celebrating', 3000);
     } catch (err: any) {
       setFormError(err.message || 'Authentication error occurred.');
+      triggerMascotMood('worried_error', 2600);
     } finally {
       setIsSubmitting(false);
       setActionType('');
@@ -184,6 +265,7 @@ export const AuthGatewayModal: React.FC = () => {
     // 1. Validate Full Name
     if (!fullName.trim() || fullName.trim().length < 2) {
       setFormError('Please enter your full name (minimum 2 characters).');
+      triggerMascotMood('worried_error', 2200);
       return;
     }
 
@@ -192,13 +274,14 @@ export const AuthGatewayModal: React.FC = () => {
     const rfcEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!trimmedEmail || !rfcEmailRegex.test(trimmedEmail)) {
       setFormError('Please enter a valid email address (e.g. name@domain.com).');
+      triggerMascotMood('worried_error', 2200);
       return;
     }
 
     // 3. Validate Password Complexity
     if (!PASSWORD_COMPLEXITY_REGEX.test(password)) {
       triggerPasswordShake(
-        'Password must be at least 8 characters long and contain a mix of letters, numbers, and special characters.'
+        'Password must be at least 8 characters long and contain letters, numbers, and special characters.'
       );
       return;
     }
@@ -206,6 +289,7 @@ export const AuthGatewayModal: React.FC = () => {
     // 4. Validate Confirm Password Match
     if (password !== confirmPassword) {
       setFormError('Passwords do not match. Please verify both fields.');
+      triggerMascotMood('worried_error', 2400);
       return;
     }
 
@@ -225,18 +309,21 @@ export const AuthGatewayModal: React.FC = () => {
         } else {
           setFormError(res.error || 'Could not create account. Please try again.');
         }
+        triggerMascotMood('worried_error', 2600);
         return;
       }
 
       // Transition to real Firebase email verification view
       setVerificationEmail(trimmedEmail);
       setViewMode('verify_email');
+      triggerMascotMood('idle', 1200);
       setVerificationNotice({
         type: 'success',
         message: 'Account created! Please check your inbox and click the verification link, then return here and click "I\'ve Verified My Email" below.',
       });
     } catch (err: any) {
       setFormError(err.message || 'Could not complete registration.');
+      triggerMascotMood('worried_error', 2600);
     } finally {
       setIsSubmitting(false);
       setActionType('');
@@ -255,17 +342,20 @@ export const AuthGatewayModal: React.FC = () => {
           type: 'success',
           message: 'Email verified successfully! Entering SubZap...',
         });
+        triggerMascotMood('celebrating', 3000);
       } else {
         setVerificationNotice({
           type: 'error',
           message: 'Your email has not been verified yet. Please check your inbox and click the verification link.',
         });
+        triggerMascotMood('worried_error', 2500);
       }
     } catch (err: any) {
       setVerificationNotice({
         type: 'error',
         message: 'Could not verify status. Please try again.',
       });
+      triggerMascotMood('worried_error', 2500);
     } finally {
       setIsSubmitting(false);
       setActionType('');
@@ -292,6 +382,7 @@ export const AuthGatewayModal: React.FC = () => {
         } else {
           setResendSuccessNotice(msg);
         }
+        triggerMascotMood('idle', 1500);
       } else {
         const errorMsg = res.error || 'Failed to resend verification email.';
         if (viewMode === 'verify_email') {
@@ -302,6 +393,7 @@ export const AuthGatewayModal: React.FC = () => {
         } else {
           setFormError(errorMsg);
         }
+        triggerMascotMood('worried_error', 2500);
       }
     } catch (err: any) {
       const errorMsg = 'Failed to resend verification email.';
@@ -313,6 +405,7 @@ export const AuthGatewayModal: React.FC = () => {
       } else {
         setFormError(errorMsg);
       }
+      triggerMascotMood('worried_error', 2500);
     } finally {
       setIsSubmitting(false);
       setActionType('');
@@ -328,9 +421,9 @@ export const AuthGatewayModal: React.FC = () => {
       setFormError('');
       setUnverifiedNotice(false);
       setResendSuccessNotice('');
-      setViewMode('signin');
+      switchMode('signin');
     } catch (e) {
-      setViewMode('signin');
+      switchMode('signin');
     } finally {
       setIsSubmitting(false);
     }
@@ -345,6 +438,7 @@ export const AuthGatewayModal: React.FC = () => {
     const targetEmail = forgotEmail.trim();
     if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
       setFormError('Please enter a valid email address.');
+      triggerMascotMood('worried_error', 2200);
       return;
     }
 
@@ -354,689 +448,818 @@ export const AuthGatewayModal: React.FC = () => {
       const res = await sendPasswordReset(targetEmail);
       if (res.success) {
         setForgotSuccessNotice(`Password reset link sent to ${targetEmail}. Please check your email inbox to reset your password.`);
+        triggerMascotMood('idle', 2000);
       } else {
         setFormError(res.error || 'Failed to send password reset email.');
+        triggerMascotMood('worried_error', 2500);
       }
     } catch (err: any) {
       setFormError(err.message || 'Error sending password reset email.');
+      triggerMascotMood('worried_error', 2500);
     } finally {
       setIsSubmitting(false);
       setActionType('');
     }
   };
 
+  const isSignUp = viewMode === 'signup';
+  const effectiveMascotMood = isSuccessTransition ? 'celebrating' : mascotMood;
+
   return (
     <div 
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 dark:bg-black/90 backdrop-blur-md overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 dark:bg-black/90 backdrop-blur-md overflow-hidden select-none"
     >
-      {/* Ambient background glow orbs */}
-      <div className="fixed -top-40 -left-40 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="fixed -bottom-40 -right-40 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+      {/* Ambient background soft glow effects */}
+      <div className="fixed -top-32 -left-32 w-80 h-80 bg-indigo-500/15 dark:bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed -bottom-32 -right-32 w-80 h-80 bg-purple-500/15 dark:bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Main Container Card */}
+      {/* 
+        FIXED ANIMATION STAGE:
+        Houses the mascot and the authentication card side-by-side on desktop, 
+        maintaining zero jumping, zero resizing, and stationary anchors.
+      */}
       <div 
-        id="auth-gateway-container"
-        className="relative w-full max-w-lg bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border border-slate-200/80 dark:border-slate-800/80 rounded-2xl sm:rounded-3xl shadow-2xl shadow-indigo-950/20 dark:shadow-indigo-950/50 overflow-y-auto max-h-[92vh] p-5 sm:p-8 text-slate-900 dark:text-slate-100 animate-in zoom-in-95 duration-200 my-auto"
+        id="auth-animation-stage"
+        className="relative w-full max-w-[820px] h-[650px] max-h-[94vh] flex items-center justify-center md:justify-between md:gap-4 overflow-hidden"
       >
-        {/* Subtle top accent border */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400" />
-
-        {/* Clean Brand Header */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-0.5 shadow-lg shadow-indigo-500/25 mb-2.5">
-            <div className="w-full h-full bg-white dark:bg-slate-950 rounded-[14px] flex items-center justify-center">
-              <Zap className="w-6 h-6 text-indigo-600 dark:text-indigo-400 fill-indigo-600/20" />
-            </div>
+        {/* 
+          DESKTOP CHARACTER STAGE (Visible on md and up)
+          Scene 1: Character glides in from left
+          Scene 2: Presents and points toward the form
+          Scene 3: Idle hovering, breathing & blinking
+          Scene 4: Reacts to focus (looking vs privacy shielding) & errors
+          Scene 5: Victory celebration pose
+        */}
+        <div 
+          className={`hidden md:flex flex-col items-center justify-center w-[300px] h-full shrink-0 relative transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            sceneStep === 'entering'
+              ? '-translate-x-16 opacity-0'
+              : 'translate-x-0 opacity-100'
+          }`}
+        >
+          {/* SubZap Brand Title above mascot */}
+          <div className="text-center mb-3">
+            <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+              Smart Subscription Management
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-[240px] mx-auto">
+              Automate tracking, prevent unwanted renewals, and optimize cash flow.
+            </p>
           </div>
-          <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-            Sub<span className="text-indigo-600 dark:text-indigo-400">Zap</span>
-          </h2>
+
+          {/* Animated Mascot ZapBot */}
+          <ZapBotMascot 
+            mood={effectiveMascotMood} 
+            viewMode={viewMode} 
+          />
         </div>
 
-        {/* Global Error Banner */}
-        {formError && (
-          <div className="mb-4 p-3 text-xs text-rose-800 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/70 rounded-xl space-y-2">
-            <div className="flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-semibold">{formError}</p>
+        {/* 
+          STATIONARY AUTHENTICATION CARD CONTAINER 
+          Rigid dimensions ensure zero layout shifts, jumping, or repositioning.
+          Enters with coordinated presentation in Scene 2, and exits smoothly on Scene 5.
+        */}
+        <div 
+          id="auth-gateway-container"
+          className={`relative w-full max-w-[440px] sm:max-w-[460px] h-[640px] sm:h-[650px] max-h-[94vh] flex flex-col bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/80 dark:border-slate-800/80 rounded-2xl sm:rounded-3xl shadow-2xl shadow-indigo-950/20 dark:shadow-indigo-950/50 p-5 sm:p-7 text-slate-900 dark:text-slate-100 overflow-hidden transition-all duration-600 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            sceneStep === 'entering'
+              ? 'opacity-0 translate-x-10 scale-[0.96] pointer-events-none'
+              : isSuccessTransition
+              ? 'opacity-0 -translate-y-4 scale-[0.97] pointer-events-none'
+              : 'opacity-100 translate-x-0 scale-100 pointer-events-auto'
+          }`}
+        >
+          {/* Top gradient accent line */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400" />
+
+          {/* Clean Header: SubZap Brand */}
+          <div className="flex flex-col items-center text-center shrink-0 mb-2">
+            {/* Mobile Mascot: Intelligently rendered compactly above the tabs for small devices */}
+            <div className="md:hidden mb-1 flex justify-center">
+              <ZapBotMascot 
+                mood={effectiveMascotMood} 
+                viewMode={viewMode} 
+                isCompact={true} 
+              />
+            </div>
+
+            <div className="hidden md:flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-400 p-0.5 shadow-md shadow-indigo-500/25">
+                <div className="w-full h-full bg-white dark:bg-slate-950 rounded-[10px] flex items-center justify-center">
+                  <Zap className="w-4 h-4 text-indigo-600 dark:text-indigo-400 fill-indigo-600/20" />
+                </div>
               </div>
-              <button 
-                type="button" 
-                onClick={() => {
-                  setFormError('');
-                  setExistingAccountEmail(null);
-                  setUnverifiedNotice(false);
-                }} 
-                className="text-rose-400 hover:text-rose-700 dark:hover:text-rose-200 cursor-pointer"
+              <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
+                Sub<span className="text-indigo-600 dark:text-indigo-400">Zap</span>
+              </h2>
+            </div>
+          </div>
+
+          {/* Animated Sliding Pill Tab Selector (Active in Sign In / Create Account modes) */}
+          <div className="relative grid grid-cols-2 p-1 bg-slate-100/90 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-700/60 text-xs font-semibold shrink-0 mb-3">
+            {/* Sliding pill indicator */}
+            <div
+              className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-lg bg-white dark:bg-slate-900 shadow-xs border border-slate-200/60 dark:border-slate-700/60 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none pointer-events-none ${
+                isSignUp ? 'translate-x-[calc(100%+8px)]' : 'translate-x-0'
+              }`}
+            />
+            <button
+              id="tab-switch-signin"
+              type="button"
+              onClick={() => switchMode('signin')}
+              className={`relative z-10 py-2 rounded-lg text-center transition-colors cursor-pointer font-bold ${
+                !isSignUp
+                  ? 'text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              id="tab-switch-signup"
+              type="button"
+              onClick={() => switchMode('signup')}
+              className={`relative z-10 py-2 rounded-lg text-center transition-colors cursor-pointer font-bold ${
+                isSignUp
+                  ? 'text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+
+          {/* Global Error Banner */}
+          {formError && (
+            <div className="shrink-0 mb-2.5 p-2.5 text-xs text-rose-800 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/70 rounded-xl space-y-1.5 transition-all">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                <div className="flex-1 font-medium leading-tight">{formError}</div>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setFormError('');
+                    setExistingAccountEmail(null);
+                    setUnverifiedNotice(false);
+                    triggerMascotMood('idle', 500);
+                  }} 
+                  className="text-rose-400 hover:text-rose-700 dark:hover:text-rose-200 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Unverified account notice */}
+              {unverifiedNotice && (
+                <div className="pt-1.5 border-t border-rose-200/60 dark:border-rose-900/60 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isSubmitting || resendTimer > 0}
+                    onClick={handleResendVerification}
+                    className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-60"
+                  >
+                    {isSubmitting && actionType === 'resend_email' ? (
+                      <>
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-3 h-3" />
+                        <span>{resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Email'}</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormError('');
+                      setViewMode('verify_email');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold text-xs cursor-pointer hover:bg-rose-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    Go to Verification
+                  </button>
+                </div>
+              )}
+
+              {/* Existing account prompt */}
+              {existingAccountEmail && viewMode === 'signup' && (
+                <div className="pt-1.5 border-t border-rose-200/60 dark:border-rose-900/60 flex items-center justify-between">
+                  <span className="text-rose-700 dark:text-rose-300 text-[11px]">Already have an account?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailInput(existingAccountEmail);
+                      switchMode('signin');
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] cursor-pointer transition-colors"
+                  >
+                    Sign In
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Resend success notice */}
+          {resendSuccessNotice && viewMode !== 'verify_email' && (
+            <div className="shrink-0 mb-2.5 p-2.5 rounded-xl text-xs bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
+              <div className="flex-1 font-medium leading-tight">{resendSuccessNotice}</div>
+              <button
+                type="button"
+                onClick={() => setResendSuccessNotice('')}
+                className="text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-200 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
+          )}
 
-            {/* If unverified account error, provide options to resend or go to verification screen */}
-            {unverifiedNotice && (
-              <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/60 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={isSubmitting || resendTimer > 0}
-                  onClick={handleResendVerification}
-                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs cursor-pointer transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-60"
-                >
-                  {isSubmitting && actionType === 'resend_email' ? (
-                    <>
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                      <span>Sending verification email...</span>
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-3 h-3" />
-                      <span>{resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Verification Email'}</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormError('');
-                    setViewMode('verify_email');
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold text-xs cursor-pointer hover:bg-rose-50 dark:hover:bg-slate-700 transition-colors"
-                >
-                  Go to Verification Screen
-                </button>
-              </div>
-            )}
-
-            {/* Existing Account Prompt guidance */}
-            {existingAccountEmail && viewMode === 'signup' && (
-              <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/60 flex items-center justify-between">
-                <span className="text-rose-700 dark:text-rose-300">Would you like to sign in instead?</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmailInput(existingAccountEmail);
-                    setExistingAccountEmail(null);
-                    setFormError('');
-                    setViewMode('signin');
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer transition-colors shadow-xs"
-                >
-                  Sign In with this email
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Resend success notice outside verification view */}
-        {resendSuccessNotice && viewMode !== 'verify_email' && (
-          <div className="mb-4 p-3 rounded-xl text-xs bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 flex items-start gap-2.5">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-semibold">{resendSuccessNotice}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setResendSuccessNotice('')}
-              className="text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-200 cursor-pointer"
+          {/* 
+            INTERNAL STATIONARY VIEWPORT WITH HORIZONTAL SLIDING CAROUSEL
+            Track width is 200%, outer card stays 100% stationary.
+          */}
+          <div className="relative flex-1 w-full overflow-hidden">
+            <div 
+              className="flex w-[200%] h-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+              style={{ 
+                transform: isSignUp ? 'translateX(-50%)' : 'translateX(0%)' 
+              }}
             >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* VIEW 1: SIGN IN */}
-        {/* ========================================================================= */}
-        {viewMode === 'signin' && (
-          <div className="space-y-4 animate-in fade-in duration-150">
-            {/* Nav Switch Tabs: Sign In / Create Account */}
-            <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-750 text-xs font-semibold">
-              <button
-                type="button"
-                className="py-2 rounded-lg bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs text-center cursor-default font-bold"
+              {/* PANEL 1: SIGN IN */}
+              <div 
+                className={`w-1/2 h-full overflow-y-auto pr-2 space-y-3 pb-2 transition-all duration-300 motion-reduce:transition-none ${
+                  !isSignUp 
+                    ? 'opacity-100 scale-100 pointer-events-auto' 
+                    : 'opacity-20 scale-[0.98] pointer-events-none'
+                }`}
               >
-                Sign In
-              </button>
-              <button
-                id="tab-switch-signup"
-                type="button"
-                onClick={() => {
-                  setFormError('');
-                  setUnverifiedNotice(false);
-                  setExistingAccountEmail(null);
-                  setViewMode('signup');
-                }}
-                className="py-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white text-center transition-colors cursor-pointer"
-              >
-                Create Account
-              </button>
-            </div>
+                {/* Google Sign In Button */}
+                <button
+                  id="google-signin-btn"
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleGoogleSignIn}
+                  className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-100 font-semibold text-sm shadow-xs transition-all hover:border-slate-400 dark:hover:border-slate-600 disabled:opacity-60 cursor-pointer active:scale-[0.99]"
+                >
+                  <GoogleIcon className="w-5 h-5" />
+                  <span>Continue with Google</span>
+                </button>
 
-            {/* Google OAuth Login Button */}
-            <button
-              id="google-signin-btn"
-              type="button"
-              disabled={isSubmitting}
-              onClick={handleGoogleSignIn}
-              className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-100 font-semibold text-sm shadow-xs transition-all hover:border-slate-400 dark:hover:border-slate-600 disabled:opacity-60 cursor-pointer"
-            >
-              <GoogleIcon className="w-5 h-5" />
-              <span>Continue with Google</span>
-            </button>
-
-            {/* Perfectly Centered Divider */}
-            <div className="w-full my-4 flex items-center justify-center">
-              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-              <span className="shrink-0 px-3 text-xs font-medium text-slate-400 dark:text-slate-500 select-none text-center">
-                Or with Email or Mobile
-              </span>
-              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-            </div>
-
-            {/* Sign In Form */}
-            <form onSubmit={handleSignInSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Email Address
-                </label>
-                <div className="relative flex items-center">
-                  <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    id="signin-email-input"
-                    type="email"
-                    required
-                    placeholder="alex@example.com"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-                  />
+                {/* Centered Divider */}
+                <div className="w-full my-3 flex items-center justify-center">
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                  <span className="shrink-0 px-3 text-xs font-medium text-slate-400 dark:text-slate-500 select-none text-center">
+                    Or with Email or Mobile
+                  </span>
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Password
-                </label>
-                <div className="relative flex items-center">
-                  <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    id="signin-password-input"
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-9 pr-10 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-                  />
+                {/* Sign In Form */}
+                <form onSubmit={handleSignInSubmit} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Email Address
+                    </label>
+                    <div className="relative flex items-center">
+                      <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <input
+                        id="signin-email-input"
+                        type="email"
+                        required
+                        placeholder="alex@example.com"
+                        value={emailInput}
+                        onFocus={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('looking_at_input');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('idle');
+                          }
+                        }}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Password
+                    </label>
+                    <div className="relative flex items-center">
+                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <input
+                        id="signin-password-input"
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        placeholder="Enter your password"
+                        value={password}
+                        onFocus={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('hiding_password');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('idle');
+                          }
+                        }}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full pl-9 pr-10 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-end pt-1">
+                      <button
+                        id="forgot-password-link"
+                        type="button"
+                        onClick={() => {
+                          setFormError('');
+                          setUnverifiedNotice(false);
+                          setForgotSuccessNotice('');
+                          setForgotEmail(emailInput);
+                          setViewMode('forgot_password');
+                          triggerMascotMood('idle', 1000);
+                        }}
+                        className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Submit Sign In Button */}
                   <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    id="signin-submit-btn"
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer mt-1"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {isSubmitting && actionType === 'signin' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Signing in...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Sign In</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
                   </button>
-                </div>
+                </form>
 
-                <div className="flex items-center justify-end pt-1.5">
+                {/* Call to action */}
+                <div className="pt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+                  <span>New to SubZap? </span>
                   <button
-                    id="forgot-password-link"
+                    id="create-account-prominent-link"
                     type="button"
-                    onClick={() => {
-                      setFormError('');
-                      setUnverifiedNotice(false);
-                      setForgotSuccessNotice('');
-                      setForgotEmail(emailInput);
-                      setViewMode('forgot_password');
-                    }}
-                    className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                    onClick={() => switchMode('signup')}
+                    className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                   >
-                    Forgot Password?
+                    Create Account
                   </button>
                 </div>
               </div>
 
-              {/* Submit Sign In Button */}
-              <button
-                id="signin-submit-btn"
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-60 cursor-pointer mt-2"
+              {/* PANEL 2: CREATE ACCOUNT */}
+              <div 
+                className={`w-1/2 h-full overflow-y-auto pl-2 space-y-2.5 pb-2 transition-all duration-300 motion-reduce:transition-none ${
+                  isSignUp 
+                    ? 'opacity-100 scale-100 pointer-events-auto' 
+                    : 'opacity-20 scale-[0.98] pointer-events-none'
+                }`}
               >
-                {isSubmitting && actionType === 'signin' ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Signing in...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Sign In</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
+                {/* Google Sign Up Button */}
+                <button
+                  id="google-signup-btn"
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleGoogleSignIn}
+                  className="w-full flex items-center justify-center gap-3 py-2 px-4 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-100 font-semibold text-sm shadow-xs transition-all hover:border-slate-400 dark:hover:border-slate-600 disabled:opacity-60 cursor-pointer active:scale-[0.99]"
+                >
+                  <GoogleIcon className="w-5 h-5" />
+                  <span>Continue with Google</span>
+                </button>
 
-            {/* Prominent Call to Action for New Users */}
-            <div className="pt-2 text-center text-xs text-slate-500 dark:text-slate-400">
-              <span>New to SubZap? </span>
-              <button
-                id="create-account-prominent-link"
-                type="button"
-                onClick={() => {
-                  setFormError('');
-                  setUnverifiedNotice(false);
-                  setExistingAccountEmail(null);
-                  setViewMode('signup');
-                }}
-                className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-              >
-                Create Account
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* VIEW 2: SIGN UP */}
-        {/* ========================================================================= */}
-        {viewMode === 'signup' && (
-          <div className="space-y-4 animate-in fade-in duration-150">
-            {/* Nav Switch Tabs */}
-            <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-750 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError('');
-                  setExistingAccountEmail(null);
-                  setViewMode('signin');
-                }}
-                className="py-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white text-center transition-colors cursor-pointer"
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                className="py-2 rounded-lg bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs text-center cursor-default font-bold"
-              >
-                Create Account
-              </button>
-            </div>
-
-            {/* Google OAuth Login Button */}
-            <button
-              id="google-signup-btn"
-              type="button"
-              disabled={isSubmitting}
-              onClick={handleGoogleSignIn}
-              className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-100 font-semibold text-sm shadow-xs transition-all hover:border-slate-400 dark:hover:border-slate-600 disabled:opacity-60 cursor-pointer"
-            >
-              <GoogleIcon className="w-5 h-5" />
-              <span>Continue with Google</span>
-            </button>
-
-            {/* Perfectly Centered Divider */}
-            <div className="w-full my-4 flex items-center justify-center">
-              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-              <span className="shrink-0 px-3 text-xs font-medium text-slate-400 dark:text-slate-500 select-none text-center">
-                Or with Email or Mobile
-              </span>
-              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-            </div>
-
-            <form onSubmit={handleSignUpSubmit} className="space-y-3.5">
-              {/* Field 1: Full Name */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Full Name
-                </label>
-                <div className="relative flex items-center">
-                  <UserIcon className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    id="signup-name-input"
-                    type="text"
-                    required
-                    placeholder="e.g. Alex Morgan"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Field 2: Email */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Email Address
-                </label>
-                <div className="relative flex items-center">
-                  <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    id="signup-email-input"
-                    type="email"
-                    required
-                    placeholder="alex@example.com"
-                    value={emailInput}
-                    onChange={(e) => {
-                      setEmailInput(e.target.value);
-                      if (existingAccountEmail) setExistingAccountEmail(null);
-                    }}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Field 3: Password */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Create Password
-                </label>
-                <div className={`relative flex items-center ${shouldShakePassword ? 'animate-shake' : ''}`}>
-                  <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    id="signup-password-input"
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Create strong password"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      if (passwordComplexityError) setPasswordComplexityError(false);
-                    }}
-                    className={`w-full pl-9 pr-10 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 transition-colors ${
-                      passwordComplexityError
-                        ? 'border-rose-400 ring-1 ring-rose-400'
-                        : 'border-slate-200 dark:border-slate-700 focus:ring-indigo-500'
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                {/* Centered Divider */}
+                <div className="w-full my-2 flex items-center justify-center">
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                  <span className="shrink-0 px-3 text-xs font-medium text-slate-400 dark:text-slate-500 select-none text-center">
+                    Or with Email or Mobile
+                  </span>
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
                 </div>
 
-                <PasswordRequirementsBar password={password} showDetails={true} />
-              </div>
+                <form onSubmit={handleSignUpSubmit} className="space-y-2">
+                  {/* Field 1: Full Name */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
+                      Full Name
+                    </label>
+                    <div className="relative flex items-center">
+                      <UserIcon className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <input
+                        id="signup-name-input"
+                        type="text"
+                        required
+                        placeholder="e.g. Alex Morgan"
+                        value={fullName}
+                        onFocus={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('looking_at_input');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('idle');
+                          }
+                        }}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                      />
+                    </div>
+                  </div>
 
-              {/* Field 4: Confirm Password */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Confirm Password
-                  </label>
-                  {confirmPassword.length > 0 && (
-                    <span
-                      className={`text-[11px] font-semibold flex items-center gap-1 ${
-                        password === confirmPassword
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-rose-600 dark:text-rose-400'
-                      }`}
-                    >
-                      {password === confirmPassword ? (
-                        <>
-                          <Check className="w-3 h-3" />
-                          <span>Passwords match</span>
-                        </>
-                      ) : (
-                        <>
-                          <X className="w-3 h-3" />
-                          <span>Passwords do not match</span>
-                        </>
+                  {/* Field 2: Email */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
+                      Email Address
+                    </label>
+                    <div className="relative flex items-center">
+                      <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <input
+                        id="signup-email-input"
+                        type="email"
+                        required
+                        placeholder="alex@example.com"
+                        value={emailInput}
+                        onFocus={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('looking_at_input');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('idle');
+                          }
+                        }}
+                        onChange={(e) => {
+                          setEmailInput(e.target.value);
+                          if (existingAccountEmail) setExistingAccountEmail(null);
+                        }}
+                        className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Field 3: Password */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
+                      Create Password
+                    </label>
+                    <div className={`relative flex items-center ${shouldShakePassword ? 'animate-shake' : ''}`}>
+                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <input
+                        id="signup-password-input"
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        placeholder="Create strong password"
+                        value={password}
+                        onFocus={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('hiding_password');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('idle');
+                          }
+                        }}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          if (passwordComplexityError) setPasswordComplexityError(false);
+                        }}
+                        className={`w-full pl-9 pr-10 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 transition-colors ${
+                          passwordComplexityError
+                            ? 'border-rose-400 ring-1 ring-rose-400'
+                            : 'border-slate-200 dark:border-slate-700 focus:ring-indigo-500/20 focus:border-indigo-500'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    <PasswordRequirementsBar password={password} showDetails={password.length > 0} />
+                  </div>
+
+                  {/* Field 4: Confirm Password */}
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Confirm Password
+                      </label>
+                      {confirmPassword.length > 0 && (
+                        <span
+                          className={`text-[11px] font-semibold flex items-center gap-1 ${
+                            password === confirmPassword
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {password === confirmPassword ? (
+                            <>
+                              <Check className="w-3 h-3" />
+                              <span>Passwords match</span>
+                            </>
+                          ) : (
+                            <>
+                              <X className="w-3 h-3" />
+                              <span>Passwords do not match</span>
+                            </>
+                          )}
+                        </span>
                       )}
-                    </span>
-                  )}
-                </div>
+                    </div>
 
-                <div className="relative flex items-center">
-                  <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    id="signup-confirm-password-input"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Re-enter password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-9 pr-10 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-                  />
+                    <div className="relative flex items-center">
+                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <input
+                        id="signup-confirm-password-input"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        required
+                        placeholder="Re-enter password"
+                        value={confirmPassword}
+                        onFocus={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('hiding_password');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (effectiveMascotMood !== 'celebrating') {
+                            setMascotMood('idle');
+                          }
+                        }}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full pl-9 pr-10 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Submit Registration Button */}
+                  <button
+                    id="signup-submit-btn"
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer mt-1"
+                  >
+                    {isSubmitting && actionType === 'signup' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Creating account...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Create Account</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="text-center text-xs text-slate-500 dark:text-slate-400 pt-1">
+                  <span>Already registered? </span>
                   <button
                     type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    onClick={() => switchMode('signin')}
+                    className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                   >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    Sign In
                   </button>
                 </div>
               </div>
-
-              {/* Submit Registration Button */}
-              <button
-                id="signup-submit-btn"
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-60 cursor-pointer mt-1"
-              >
-                {isSubmitting && actionType === 'signup' ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Creating account...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Create Account</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="text-center text-xs text-slate-500 dark:text-slate-400 pt-1">
-              <span>Already registered? </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError('');
-                  setExistingAccountEmail(null);
-                  setViewMode('signin');
-                }}
-                className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-              >
-                Sign In
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* VIEW 3: VERIFY YOUR EMAIL */}
-        {/* ========================================================================= */}
-        {viewMode === 'verify_email' && (
-          <div className="space-y-5 animate-in fade-in duration-150 py-2">
-            <div className="text-center space-y-2">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm">
-                <Mail className="w-7 h-7" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                Verify your email
-              </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-sm mx-auto">
-                We've sent a verification link to your email address. Please verify your email before continuing to SubZap.
-              </p>
-              <div className="py-2 px-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 font-mono text-sm font-semibold text-slate-800 dark:text-slate-200 text-center break-all">
-                {verificationEmail || user?.email || 'your email'}
-              </div>
             </div>
 
-            {/* Notification alert */}
-            {verificationNotice && (
-              <div className={`p-3 rounded-xl text-xs flex items-start gap-2.5 ${
-                verificationNotice.type === 'success'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
-                  : verificationNotice.type === 'error'
-                  ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800'
-                  : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800'
-              }`}>
-                {verificationNotice.type === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
-                )}
-                <span className="leading-relaxed">{verificationNotice.message}</span>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="space-y-2.5 pt-1">
-              <button
-                id="btn-verified-my-email"
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleCheckVerified}
-                className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60"
-              >
-                {isSubmitting && actionType === 'check_verified' ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Checking verification...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>I've Verified My Email</span>
-                    <CheckCircle2 className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-
-              <button
-                id="btn-resend-verification-email"
-                type="button"
-                disabled={isSubmitting || resendTimer > 0}
-                onClick={handleResendVerification}
-                className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60"
-              >
-                {isSubmitting && actionType === 'resend_email' ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Sending verification email...</span>
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>{resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Verification Email'}</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                id="btn-back-to-signin"
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleBackToSignIn}
-                className="w-full py-2 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Sign In</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* VIEW 4: FORGOT PASSWORD */}
-        {/* ========================================================================= */}
-        {viewMode === 'forgot_password' && (
-          <div className="space-y-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode('signin');
-                  setFormError('');
-                  setForgotSuccessNotice('');
-                }}
-                className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Sign In</span>
-              </button>
-            </div>
-
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Reset Account Password
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Enter your registered email address to receive a secure password reset link via Firebase.
-              </p>
-            </div>
-
-            {/* Success notice */}
-            {forgotSuccessNotice ? (
-              <div className="space-y-4 py-2">
-                <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">{forgotSuccessNotice}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewMode('signin');
-                    setFormError('');
-                    setForgotSuccessNotice('');
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer transition-all"
-                >
-                  <span>Return to Sign In</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Email Address
-                  </label>
-                  <div className="relative flex items-center">
-                    <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-                    <input
-                      id="forgot-email-input"
-                      type="email"
-                      required
-                      placeholder="alex@example.com"
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
+            {/* OVERLAY VIEW: VERIFY EMAIL */}
+            {viewMode === 'verify_email' && (
+              <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-20 overflow-y-auto space-y-4 py-2 px-1 transition-opacity animate-in fade-in duration-200">
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm">
+                    <Mail className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                    Verify your email
+                  </h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-sm mx-auto">
+                    We've sent a verification link to your email address. Please click the link to activate your SubZap account.
+                  </p>
+                  <div className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 text-center break-all">
+                    {verificationEmail || user?.email || 'your email'}
                   </div>
                 </div>
 
-                <button
-                  id="forgot-send-reset-btn"
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
-                >
-                  {isSubmitting && actionType === 'forgot_password' ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Sending reset email...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Send Password Reset Link</span>
-                      <Send className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
+                {/* Notification alert */}
+                {verificationNotice && (
+                  <div className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${
+                    verificationNotice.type === 'success'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
+                      : verificationNotice.type === 'error'
+                      ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800'
+                      : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800'
+                  }`}>
+                    {verificationNotice.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                    )}
+                    <span className="leading-relaxed">{verificationNotice.message}</span>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="space-y-2 pt-1">
+                  <button
+                    id="btn-verified-my-email"
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={handleCheckVerified}
+                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99] disabled:opacity-60"
+                  >
+                    {isSubmitting && actionType === 'check_verified' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Checking verification...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>I've Verified My Email</span>
+                        <CheckCircle2 className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    id="btn-resend-verification-email"
+                    type="button"
+                    disabled={isSubmitting || resendTimer > 0}
+                    onClick={handleResendVerification}
+                    className="w-full py-2 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60"
+                  >
+                    {isSubmitting && actionType === 'resend_email' ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Sending verification email...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>{resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Verification Email'}</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    id="btn-back-to-signin"
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={handleBackToSignIn}
+                    className="w-full py-1.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back to Sign In</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* OVERLAY VIEW: FORGOT PASSWORD */}
+            {viewMode === 'forgot_password' && (
+              <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-20 overflow-y-auto space-y-4 py-2 px-1 transition-opacity animate-in fade-in duration-200">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      switchMode('signin');
+                      setFormError('');
+                      setForgotSuccessNotice('');
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back to Sign In</span>
+                  </button>
+                </div>
+
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Reset Account Password
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Enter your registered email address to receive a secure password reset link via Firebase.
+                  </p>
+                </div>
+
+                {/* Success notice */}
+                {forgotSuccessNotice ? (
+                  <div className="space-y-3 py-2">
+                    <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      <span className="leading-relaxed">{forgotSuccessNotice}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        switchMode('signin');
+                        setFormError('');
+                        setForgotSuccessNotice('');
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    >
+                      <span>Return to Sign In</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleForgotPasswordSubmit} className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Email Address
+                      </label>
+                      <div className="relative flex items-center">
+                        <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                        <input
+                          id="forgot-email-input"
+                          type="email"
+                          required
+                          placeholder="alex@example.com"
+                          value={forgotEmail}
+                          onFocus={() => {
+                            if (effectiveMascotMood !== 'celebrating') {
+                              setMascotMood('looking_at_input');
+                            }
+                          }}
+                          onBlur={() => {
+                            if (effectiveMascotMood !== 'celebrating') {
+                              setMascotMood('idle');
+                            }
+                          }}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      id="forgot-send-reset-btn"
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 active:scale-[0.99]"
+                    >
+                      {isSubmitting && actionType === 'forgot_password' ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Sending reset link...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Send Password Reset Link</span>
+                          <Send className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )}
+              </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
