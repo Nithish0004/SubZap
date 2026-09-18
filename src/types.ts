@@ -97,3 +97,5 @@ export interface FinancialMetrics {
 }
 
 export type AnalyticsMetrics = FinancialMetrics;
+
+export * from './catalog/types';

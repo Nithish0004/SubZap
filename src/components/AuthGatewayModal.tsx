@@ -513,6 +513,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
           <ZapBotMascot 
             mood={effectiveMascotMood} 
             viewMode={viewMode} 
+            isLoading={isSubmitting}
           />
         </div>
 
@@ -542,6 +543,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                 mood={effectiveMascotMood} 
                 viewMode={viewMode} 
                 isCompact={true} 
+                isLoading={isSubmitting}
               />
             </div>
 

@@ -15,6 +15,7 @@ interface ZapBotMascotProps {
   viewMode: 'signin' | 'signup' | 'verify_email' | 'forgot_password';
   className?: string;
   isCompact?: boolean;
+  isLoading?: boolean;
 }
 
 export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
@@ -22,6 +23,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
   viewMode,
   className = '',
   isCompact = false,
+  isLoading = false,
 }) => {
   // Idle blink cycle
   const [isBlinking, setIsBlinking] = useState(false);
@@ -51,6 +53,8 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
     bubbleText = "You're in! 🎉";
   } else if (isError) {
     bubbleText = "Hmm, something's not right";
+  } else if (isLoading) {
+    bubbleText = "Checking...";
   } else if (viewMode === 'verify_email') {
     bubbleText = "Check your inbox ✉️";
   } else if (isCoveringEyes) {
