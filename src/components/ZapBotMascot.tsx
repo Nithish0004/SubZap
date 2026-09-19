@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export type MascotMood = 
   | 'entering' 
@@ -9,6 +9,101 @@ export type MascotMood =
   | 'worried_error' 
   | 'switching_mode' 
   | 'celebrating';
+
+export type BotReaction = 'tickle' | 'surprised' | 'shy' | 'happy' | 'curious';
+
+// 5-Stage Conversational Dialogue Pools (Stage 1 to Stage 5)
+// Dialogue stages are strictly sequential and decoupled from visual reaction animations
+export type ConversationStage = 1 | 2 | 3 | 4 | 5;
+
+const CONVERSATION_STAGE_MESSAGES: Record<ConversationStage, string[]> = {
+  1: [
+    'Whoa! 👀',
+    'Hey! 😂',
+    'Oh! You got me 😳',
+    "I wasn't ready for that! 👀",
+  ],
+  2: [
+    "Wait... you're doing that on purpose 😂",
+    'Okay okay, I felt that! 😆',
+    'Are you testing me? 🤔',
+    'You found my tickle spot! 😂',
+  ],
+  3: [
+    'Haha, you really like bothering me 😄',
+    "You're having way too much fun with this 😂",
+    'I can see that cursor, you know 👀',
+    'Hmm... suspicious cursor activity 🤨',
+  ],
+  4: [
+    'Alright, I like your energy 😄',
+    "Okay... we're friends now 🤝",
+    "You're making me shy now 😊",
+    'Fine, you win 😂💜',
+  ],
+  5: [
+    "But... weren't you here to sign in? 👀👉",
+    "I'm fun, but your login form is still waiting 😂👉",
+    'Okay, enough distracting me 😆 The form is over there 👉',
+    'I think we forgot why you came here 😂',
+  ],
+};
+
+// Utility to shuffle an array
+const shuffleArray = <T,>(arr: T[]): T[] => {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
+// Storage history structure for subtle bot interactions
+export interface BotSessionRecord {
+  timestamp: number;
+  reactionsCompleted: number; // e.g. 5 for full conversation
+  isFullConversation: boolean;
+}
+
+const BOT_HISTORY_STORAGE_KEY = 'subzap_bot_interaction_history_v1';
+const MAX_STORED_SESSIONS = 5;
+
+// Read recent interaction sessions
+export const getStoredBotSessions = (): BotSessionRecord[] => {
+  try {
+    const data = localStorage.getItem(BOT_HISTORY_STORAGE_KEY);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+// Check if previous sessions had a long conversation (3+ reactions or full 5)
+export const hasPreviousLongConversation = (): boolean => {
+  const sessions = getStoredBotSessions();
+  // Any session with full conversation or at least 3 reactions
+  return sessions.some(s => s.isFullConversation || s.reactionsCompleted >= 3);
+};
+
+// Append a session record keeping only the last MAX_STORED_SESSIONS
+export const recordBotSession = (reactionsCompleted: number, isFullConversation: boolean): void => {
+  if (reactionsCompleted === 0) return;
+  try {
+    const existing = getStoredBotSessions();
+    const newSession: BotSessionRecord = {
+      timestamp: Date.now(),
+      reactionsCompleted,
+      isFullConversation,
+    };
+    const updated = [newSession, ...existing].slice(0, MAX_STORED_SESSIONS);
+    localStorage.setItem(BOT_HISTORY_STORAGE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn('Could not save bot interaction session:', err);
+  }
+};
 
 interface ZapBotMascotProps {
   mood: MascotMood;
@@ -28,24 +123,368 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
   // Idle blink cycle
   const [isBlinking, setIsBlinking] = useState(false);
 
-  useEffect(() => {
-    const blinkInterval = setInterval(() => {
-      setIsBlinking(true);
-      setTimeout(() => setIsBlinking(false), 220);
-    }, 4000);
+  // Interactive Bot Reactions State (Tickle, Surprised, Shy, Happy, Curious)
+  const [activeReaction, setActiveReaction] = useState<BotReaction | null>(null);
+  const [activeSpeechMessage, setActiveSpeechMessage] = useState<string | null>(null);
+  const [isConversationCompleted, setIsConversationCompleted] = useState<boolean>(false);
 
-    return () => clearInterval(blinkInterval);
-  }, []);
+  // Subtle interaction history state: detect if the user had a previous long conversation
+  const [hadLongConversation] = useState<boolean>(() => {
+    return hasPreviousLongConversation();
+  });
 
-  // Compute arm poses and head orientation based on mood
+  // Track number of reactions completed in the current interactive session
+  const reactionsCompletedInSessionRef = useRef<number>(0);
+
+  // Session management refs
+  const conversationStageRef = useRef<ConversationStage>(1);
+  const animationQueueRef = useRef<BotReaction[]>([]);
+  const isSessionRunningRef = useRef<boolean>(false);
+  const lastSessionStageMessagesRef = useRef<Partial<Record<ConversationStage, string>>>({});
+  const reactionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const nextReactionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isBotHovered = useRef<boolean>(false);
+
+  // Pupil mouse tracking refs
+  const botContainerRef = useRef<HTMLDivElement | null>(null);
+  const leftPupilRef = useRef<SVGGElement | null>(null);
+  const rightPupilRef = useRef<SVGGElement | null>(null);
+
+  // Target and current pupil offsets in SVG units
+  const targetOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const currentOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isPointerInside = useRef<boolean>(false);
+  const rafId = useRef<number | null>(null);
+
+  // Priority check: higher priority authentication/form states disable reactions
   const isCoveringEyes = mood === 'hiding_password';
-  const isPresenting = mood === 'presenting';
-  const isLookingAtForm = mood === 'looking_at_input' || mood === 'idle';
   const isError = mood === 'worried_error';
   const isCelebrating = mood === 'celebrating';
   const isSwitching = mood === 'switching_mode';
+  const isEntering = mood === 'entering';
+  const isLookingAtInput = mood === 'looking_at_input';
 
-  // Dynamic message bubble text resolution based on state & mood
+  // Can reactions trigger? Allowed only during normal interactive idling or presenting
+  const canTriggerReaction = 
+    !isCoveringEyes && 
+    !isError && 
+    !isCelebrating && 
+    !isLoading && 
+    !isSwitching && 
+    !isEntering &&
+    !isLookingAtInput &&
+    viewMode !== 'verify_email';
+
+  // Automatically dismiss active reaction and conversation if high-priority state occurs
+  useEffect(() => {
+    if (!canTriggerReaction) {
+      if (activeReaction !== null) {
+        setActiveReaction(null);
+      }
+      setActiveSpeechMessage(null);
+      setIsConversationCompleted(false);
+      animationQueueRef.current = [];
+      conversationStageRef.current = 1;
+      isSessionRunningRef.current = false;
+
+      // If a session was interrupted by form interaction after having completed reactions, persist the count
+      if (reactionsCompletedInSessionRef.current > 0) {
+        recordBotSession(reactionsCompletedInSessionRef.current, false);
+        reactionsCompletedInSessionRef.current = 0;
+      }
+
+      if (reactionTimerRef.current) {
+        clearTimeout(reactionTimerRef.current);
+        reactionTimerRef.current = null;
+      }
+      if (nextReactionTimerRef.current) {
+        clearTimeout(nextReactionTimerRef.current);
+        nextReactionTimerRef.current = null;
+      }
+    }
+  }, [canTriggerReaction, activeReaction]);
+
+  useEffect(() => {
+    let blinkTimer: NodeJS.Timeout;
+    let isMounted = true;
+
+    const scheduleNextBlink = () => {
+      const delay = 5000 + Math.random() * 2000;
+      blinkTimer = setTimeout(() => {
+        if (!isMounted) return;
+        setIsBlinking(true);
+        setTimeout(() => {
+          if (isMounted) {
+            setIsBlinking(false);
+            scheduleNextBlink();
+          }
+        }, 220);
+      }, delay);
+    };
+
+    scheduleNextBlink();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(blinkTimer);
+    };
+  }, []);
+
+  // Pupil animation loop with smooth lerping
+  useEffect(() => {
+    // When covering eyes or during squinted reactions (happy/tickle), pause tracking and center
+    const shouldTrack = !isCoveringEyes && activeReaction !== 'tickle' && activeReaction !== 'happy';
+
+    const animatePupils = () => {
+      if (!shouldTrack || !isPointerInside.current) {
+        targetOffset.current = { x: 0, y: 0 };
+      }
+
+      // Smooth lerp towards target
+      const ease = 0.18;
+      currentOffset.current.x += (targetOffset.current.x - currentOffset.current.x) * ease;
+      currentOffset.current.y += (targetOffset.current.y - currentOffset.current.y) * ease;
+
+      const tx = Math.round(currentOffset.current.x * 100) / 100;
+      const ty = Math.round(currentOffset.current.y * 100) / 100;
+
+      const transformStr = `translate(${tx}px, ${ty}px)`;
+
+      if (leftPupilRef.current) {
+        leftPupilRef.current.style.transform = transformStr;
+      }
+      if (rightPupilRef.current) {
+        rightPupilRef.current.style.transform = transformStr;
+      }
+
+      rafId.current = requestAnimationFrame(animatePupils);
+    };
+
+    rafId.current = requestAnimationFrame(animatePupils);
+
+    return () => {
+      if (rafId.current !== null) {
+        cancelAnimationFrame(rafId.current);
+      }
+    };
+  }, [isCoveringEyes, activeReaction]);
+
+  // Global pointer/mouse move & leave listener without triggering React state updates
+  useEffect(() => {
+    if (isCoveringEyes) {
+      targetOffset.current = { x: 0, y: 0 };
+      return;
+    }
+
+    const handlePointerMove = (e: MouseEvent) => {
+      isPointerInside.current = true;
+      if (!botContainerRef.current) return;
+
+      const rect = botContainerRef.current.getBoundingClientRect();
+      // Calculate face center roughly at the visor area (35% from top of bot container)
+      const botCenterX = rect.left + rect.width / 2;
+      const botCenterY = rect.top + rect.height * 0.35;
+
+      const dx = e.clientX - botCenterX;
+      const dy = e.clientY - botCenterY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist === 0) {
+        targetOffset.current = { x: 0, y: 0 };
+        return;
+      }
+
+      // Max bounds: Eye is 18w x 22h, pupil is r=4.5 (50% of 18px diameter). Clamping ensures pupil never leaves blue eye boundary
+      // If curious reaction is active, strongly track towards cursor
+      const maxDistanceX = activeReaction === 'curious' ? 3.8 : 3.2;
+      const maxDistanceY = activeReaction === 'curious' ? 4.8 : 4.0;
+
+      // Special reaction pupil overrides:
+      if (activeReaction === 'shy') {
+        // Shy: pupils glance sideways away from cursor
+        const glanceDirection = dx >= 0 ? -1 : 1;
+        targetOffset.current = { x: glanceDirection * 2.8, y: 1.2 };
+        return;
+      }
+
+      // Smooth distance factor: ramps up as cursor moves away, up to 1.0 at ~350px
+      const distFactor = activeReaction === 'curious' ? 1.0 : Math.min(dist / 350, 1.0);
+
+      const normX = dx / dist;
+      const normY = dy / dist;
+
+      targetOffset.current = {
+        x: normX * maxDistanceX * distFactor,
+        y: normY * maxDistanceY * distFactor,
+      };
+    };
+
+    const handleMouseLeave = (e: MouseEvent) => {
+      // If leaving the window document
+      if (!e.relatedTarget) {
+        isPointerInside.current = false;
+        targetOffset.current = { x: 0, y: 0 };
+      }
+    };
+
+    window.addEventListener('mousemove', handlePointerMove, { passive: true });
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [isCoveringEyes, activeReaction]);
+
+  // Clean up reaction timers on unmount
+  useEffect(() => {
+    return () => {
+      if (reactionTimerRef.current) {
+        clearTimeout(reactionTimerRef.current);
+      }
+      if (nextReactionTimerRef.current) {
+        clearTimeout(nextReactionTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Helper to pick a random message for a conversational stage (1 to 5)
+  // Dialogue stages strictly follow the conversation arc, avoiding previous session repeats
+  const pickMessageForStage = (stage: ConversationStage): string => {
+    const pool = CONVERSATION_STAGE_MESSAGES[stage];
+    const prevSessionMsg = lastSessionStageMessagesRef.current[stage];
+    const candidates = pool.filter((msg) => msg !== prevSessionMsg);
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
+    lastSessionStageMessagesRef.current[stage] = chosen;
+    return chosen;
+  };
+
+  // Play next reaction in the current session queue
+  const playNextInSession = () => {
+    if (!canTriggerReaction || !isBotHovered.current) {
+      isSessionRunningRef.current = false;
+      return;
+    }
+
+    const currentStage = conversationStageRef.current;
+
+    if (currentStage > 5) {
+      // All 5 conversational stages completed in this session!
+      setIsConversationCompleted(true);
+      setActiveReaction(null);
+      setActiveSpeechMessage(null);
+      isSessionRunningRef.current = false;
+
+      // Save full conversation to interaction history
+      recordBotSession(5, true);
+      reactionsCompletedInSessionRef.current = 5;
+      return;
+    }
+
+    // Pick dialogue message strictly from the current conversation stage
+    const msg = pickMessageForStage(currentStage);
+
+    // Pick visual reaction animation independently from the animation queue
+    const nextReaction = animationQueueRef.current.length > 0 
+      ? animationQueueRef.current.shift()! 
+      : 'happy';
+
+    reactionsCompletedInSessionRef.current = currentStage;
+    setActiveReaction(nextReaction);
+    setActiveSpeechMessage(msg);
+
+    // Advance to the next conversation stage for the next turn
+    conversationStageRef.current = (currentStage + 1) as ConversationStage;
+
+    // Each reaction + message lasts between 2500ms and 3000ms for comfortable reading
+    const reactionDuration = 2500 + Math.random() * 500; // 2500ms - 3000ms
+
+    if (reactionTimerRef.current) {
+      clearTimeout(reactionTimerRef.current);
+    }
+
+    reactionTimerRef.current = setTimeout(() => {
+      reactionTimerRef.current = null;
+
+      if (!isBotHovered.current || !canTriggerReaction) {
+        setActiveReaction(null);
+        setActiveSpeechMessage(null);
+        isSessionRunningRef.current = false;
+        return;
+      }
+
+      // Small natural transition delay between reactions (120-200ms)
+      const transitionDelay = 120 + Math.random() * 80;
+      if (nextReactionTimerRef.current) {
+        clearTimeout(nextReactionTimerRef.current);
+      }
+      nextReactionTimerRef.current = setTimeout(() => {
+        nextReactionTimerRef.current = null;
+        playNextInSession();
+      }, transitionDelay);
+    }, reactionDuration);
+  };
+
+  // Start a new interactive 5-stage conversation session
+  const startConversationSession = () => {
+    if (!canTriggerReaction || isSessionRunningRef.current || isConversationCompleted) return;
+
+    // Reset reaction counter and conversation stage for this session
+    reactionsCompletedInSessionRef.current = 0;
+    conversationStageRef.current = 1;
+
+    // Build randomized queue of all 5 reaction animations for visual variety
+    const allReactions: BotReaction[] = ['tickle', 'surprised', 'shy', 'happy', 'curious'];
+    animationQueueRef.current = shuffleArray(allReactions);
+    isSessionRunningRef.current = true;
+
+    playNextInSession();
+  };
+
+  // Handler for mouse entry onto the bot character
+  const handleMouseEnterBot = () => {
+    isBotHovered.current = true;
+
+    if (!canTriggerReaction) return;
+    if (isSessionRunningRef.current || isConversationCompleted) return;
+
+    startConversationSession();
+  };
+
+  // Handler for mouse completely leaving the bot character
+  const handleMouseLeaveBot = () => {
+    isBotHovered.current = false;
+
+    // If leaving mid-session with partial progress, record to interaction history
+    if (reactionsCompletedInSessionRef.current > 0 && !isConversationCompleted) {
+      recordBotSession(reactionsCompletedInSessionRef.current, false);
+    }
+    reactionsCompletedInSessionRef.current = 0;
+
+    // Reset pending timers
+    if (reactionTimerRef.current) {
+      clearTimeout(reactionTimerRef.current);
+      reactionTimerRef.current = null;
+    }
+    if (nextReactionTimerRef.current) {
+      clearTimeout(nextReactionTimerRef.current);
+      nextReactionTimerRef.current = null;
+    }
+
+    // Reset session and reaction states completely on exit
+    setActiveReaction(null);
+    setActiveSpeechMessage(null);
+    setIsConversationCompleted(false);
+    animationQueueRef.current = [];
+    conversationStageRef.current = 1;
+    isSessionRunningRef.current = false;
+  };
+
+  // Compute arm poses and head orientation based on mood & active reaction
+  const isPresenting = mood === 'presenting' || isConversationCompleted;
+  const isLookingAtForm = (mood === 'looking_at_input' || mood === 'idle' || isConversationCompleted) && !activeReaction;
+
+  // Dynamic message bubble text resolution based on state, mood & active reaction
   let bubbleText = '';
   if (mood === 'entering') {
     bubbleText = '';
@@ -63,12 +502,28 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
     bubbleText = "Let's get you set up!";
   } else if (mood === 'looking_at_input') {
     bubbleText = "Let's start with your email";
+  } else if (activeReaction && activeSpeechMessage) {
+    // Current reaction message from the conversation pool
+    bubbleText = activeSpeechMessage;
+  } else if (isConversationCompleted && isBotHovered.current) {
+    // Final friendly message directing the user toward Sign In / Create Account
+    if (viewMode === 'signup') {
+      bubbleText = "Come on 😄 Let's create your account! 👉";
+    } else {
+      bubbleText = "Come on 😄 Let's get you signed in! 👉";
+    }
   } else if (mood === 'idle' || mood === 'presenting') {
-    bubbleText = "Ready when you are!";
+    // Check subtle interaction history: if returning user with prior long conversation, greet them warmly
+    if (hadLongConversation && viewMode === 'signin') {
+      bubbleText = "Welcome back! Great to see you again 👋";
+    } else {
+      bubbleText = "Ready when you are!";
+    }
   }
 
   return (
     <div 
+      ref={botContainerRef}
       className={`relative select-none flex flex-col items-center justify-center transition-all duration-500 ${className}`}
       aria-hidden="true"
     >
@@ -81,7 +536,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
         {bubbleText && (
           <div
             key={bubbleText}
-            className="relative px-3.5 py-1.5 rounded-full bg-white/95 dark:bg-slate-800/95 border border-slate-200/90 dark:border-slate-700/80 shadow-md shadow-slate-900/5 dark:shadow-black/20 text-xs font-semibold text-slate-700 dark:text-slate-200 backdrop-blur-md flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 whitespace-nowrap"
+            className="relative px-3.5 py-1.5 max-w-[280px] sm:max-w-[320px] rounded-2xl bg-white/95 dark:bg-slate-800/95 border border-slate-200/90 dark:border-slate-700/80 shadow-md shadow-slate-900/5 dark:shadow-black/20 text-xs font-semibold text-slate-700 dark:text-slate-200 backdrop-blur-md flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 leading-snug"
           >
             {bubbleText}
             {/* Subtle speech bubble tail pointing down toward bot antenna */}
@@ -92,7 +547,9 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
 
       {/* Main SVG Mascot Character: "ZapBot" */}
       <div 
-        className={`relative transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        onMouseEnter={handleMouseEnterBot}
+        onMouseLeave={handleMouseLeaveBot}
+        className={`relative transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer group ${
           mood === 'entering' 
             ? '-translate-x-12 opacity-0 scale-90' 
             : 'translate-x-0 opacity-100 scale-100'
@@ -101,8 +558,17 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
         <svg
           viewBox="0 0 240 280"
           className={`${isCompact ? 'w-28 h-32' : 'w-48 h-56 sm:w-56 sm:h-64'} drop-shadow-xl transition-all duration-500 ${
-            // Subtle idle hover breathing animation
-            mood === 'idle' || mood === 'looking_at_input' ? 'animate-idle-float' : ''
+            activeReaction === 'tickle'
+              ? 'animate-bot-wiggle'
+              : activeReaction === 'surprised'
+              ? 'animate-bot-surprise'
+              : activeReaction === 'happy'
+              ? 'animate-bot-bounce'
+              : activeReaction === 'curious'
+              ? 'scale-[1.02] origin-bottom'
+              : activeReaction === 'shy'
+              ? 'scale-[0.98]'
+              : (mood === 'idle' || mood === 'looking_at_input') ? 'animate-idle-float' : ''
           }`}
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
@@ -211,6 +677,16 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
                 ? 'rotate-3 -translate-y-1.5' 
                 : isCoveringEyes 
                 ? '-rotate-6 translate-y-0.5' 
+                : activeReaction === 'shy'
+                ? '-rotate-6 translate-y-0.5'
+                : activeReaction === 'curious'
+                ? 'rotate-6 -translate-y-1'
+                : activeReaction === 'tickle'
+                ? 'rotate-2'
+                : activeReaction === 'surprised'
+                ? '-translate-y-2'
+                : activeReaction === 'happy'
+                ? 'rotate-2 -translate-y-1'
                 : isLookingAtForm 
                 ? 'rotate-3' 
                 : 'rotate-0'
@@ -297,40 +773,67 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
                 {/* Sweatdrop glitch dot */}
                 <circle cx="160" cy="74" r="3.5" fill="#38BDF8" opacity="0.9" />
               </g>
-            ) : isCelebrating ? (
-              // Celebrating Happy Arch Eyes ^ ^
+            ) : isCelebrating || activeReaction === 'tickle' || activeReaction === 'happy' ? (
+              // Cheerful / Tickled / Happy Squinted Arch Eyes ^ ^ with warm pink blush
               <g className="transition-all duration-300">
-                <path d="M90 95 Q100 83 110 95" stroke="#10B981" strokeWidth="4" strokeLinecap="round" />
-                <path d="M130 95 Q140 83 150 95" stroke="#10B981" strokeWidth="4" strokeLinecap="round" />
-                {/* Sparkles */}
-                <polygon points="120,78 122,83 127,85 122,87 120,92 118,87 113,85 118,83" fill="#FBBF24" />
-                <circle cx="92" cy="104" r="4" fill="#FB7185" opacity="0.7" />
-                <circle cx="148" cy="104" r="4" fill="#FB7185" opacity="0.7" />
+                <path d="M90 95 Q100 83 110 95" stroke="#38BDF8" strokeWidth="4" strokeLinecap="round" />
+                <path d="M130 95 Q140 83 150 95" stroke="#38BDF8" strokeWidth="4" strokeLinecap="round" />
+                {/* Warm cheerful blush cheek circles */}
+                <circle cx="88" cy="104" r="4" fill="#F43F5E" opacity="0.65" />
+                <circle cx="152" cy="104" r="4" fill="#F43F5E" opacity="0.65" />
+                {activeReaction === 'happy' && (
+                  <circle cx="120" cy="80" r="2.5" fill="#A855F7" opacity="0.9" filter="url(#eyeGlow)" />
+                )}
               </g>
             ) : (
-              // Standard / Looking Eyes with blink capability
+              // Standard / Looking / Surprised / Curious / Shy Eyes with blink capability
               <g 
                 className={`transition-all duration-200 ${
-                  isBlinking ? 'scale-y-10 origin-[120px_92px]' : 'scale-y-100'
+                  isBlinking && activeReaction !== 'surprised' ? 'scale-y-10 origin-[120px_92px]' : 'scale-y-100'
                 }`}
               >
+                {/* Shy blush cheeks if shy reaction */}
+                {activeReaction === 'shy' && (
+                  <g className="transition-all duration-300">
+                    <circle cx="86" cy="104" r="3.8" fill="#FB7185" opacity="0.8" />
+                    <circle cx="154" cy="104" r="3.8" fill="#FB7185" opacity="0.8" />
+                  </g>
+                )}
+
                 {/* Left Eye */}
                 <g 
                   className={`transition-transform duration-300 ${
                     isLookingAtForm ? 'translate-x-3' : 'translate-x-0'
                   }`}
                 >
+                  {/* Glowing blue eye body - expands slightly when surprised */}
                   <rect 
-                    x="90" 
-                    y="82" 
-                    width="18" 
-                    height="22" 
-                    rx="9" 
+                    x={activeReaction === 'surprised' ? "88" : "90"} 
+                    y={activeReaction === 'surprised' ? "80" : "82"} 
+                    width={activeReaction === 'surprised' ? "22" : "18"} 
+                    height={activeReaction === 'surprised' ? "26" : "22"} 
+                    rx={activeReaction === 'surprised' ? "11" : "9"} 
                     fill="#38BDF8" 
                     filter="url(#eyeGlow)" 
                   />
-                  {/* Eye pupil reflection */}
-                  <circle cx="95" cy="88" r="3.5" fill="#FFFFFF" />
+                  {/* Mouse-following pupil */}
+                  <g ref={leftPupilRef} className="will-change-transform">
+                    {/* Dark/black pupil */}
+                    <circle 
+                      cx="99" 
+                      cy="93" 
+                      r={activeReaction === 'surprised' ? "5.2" : "4.5"} 
+                      fill="#0F172A" 
+                    />
+                    <circle 
+                      cx="99" 
+                      cy="93" 
+                      r={activeReaction === 'surprised' ? "2.2" : "1.8"} 
+                      fill="#020617" 
+                    />
+                  </g>
+                  {/* Eye highlight reflection (remains crisp on top) */}
+                  <circle cx="95" cy="88" r="3" fill="#FFFFFF" opacity="0.95" />
                 </g>
 
                 {/* Right Eye */}
@@ -339,17 +842,34 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
                     isLookingAtForm ? 'translate-x-3' : 'translate-x-0'
                   }`}
                 >
+                  {/* Glowing blue eye body - expands slightly when surprised */}
                   <rect 
-                    x="132" 
-                    y="82" 
-                    width="18" 
-                    height="22" 
-                    rx="9" 
+                    x={activeReaction === 'surprised' ? "130" : "132"} 
+                    y={activeReaction === 'surprised' ? "80" : "82"} 
+                    width={activeReaction === 'surprised' ? "22" : "18"} 
+                    height={activeReaction === 'surprised' ? "26" : "22"} 
+                    rx={activeReaction === 'surprised' ? "11" : "9"} 
                     fill="#38BDF8" 
                     filter="url(#eyeGlow)" 
                   />
-                  {/* Eye pupil reflection */}
-                  <circle cx="137" cy="88" r="3.5" fill="#FFFFFF" />
+                  {/* Mouse-following pupil */}
+                  <g ref={rightPupilRef} className="will-change-transform">
+                    {/* Dark/black pupil */}
+                    <circle 
+                      cx="141" 
+                      cy="93" 
+                      r={activeReaction === 'surprised' ? "5.2" : "4.5"} 
+                      fill="#0F172A" 
+                    />
+                    <circle 
+                      cx="141" 
+                      cy="93" 
+                      r={activeReaction === 'surprised' ? "2.2" : "1.8"} 
+                      fill="#020617" 
+                    />
+                  </g>
+                  {/* Eye highlight reflection (remains crisp on top) */}
+                  <circle cx="137" cy="88" r="3" fill="#FFFFFF" opacity="0.95" />
                 </g>
               </g>
             )}
@@ -365,6 +885,16 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
                 ? '-rotate-[75deg] -translate-y-8 -translate-x-3' 
                 : isError 
                 ? 'rotate-[20deg] translate-y-1' 
+                : activeReaction === 'surprised'
+                ? '-rotate-[25deg] -translate-x-2'
+                : activeReaction === 'shy'
+                ? 'rotate-[16deg] translate-x-1.5'
+                : activeReaction === 'tickle'
+                ? '-rotate-[15deg] translate-y-0.5'
+                : activeReaction === 'happy'
+                ? '-rotate-[38deg] -translate-y-2'
+                : activeReaction === 'curious'
+                ? 'rotate-[10deg]'
                 : isPresenting 
                 ? '-rotate-12 translate-y-1' 
                 : 'rotate-0'
@@ -385,6 +915,10 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
               className={`transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] origin-[71px_186px] ${
                 isCoveringEyes
                   ? 'rotate-[80deg]'
+                  : activeReaction === 'shy'
+                  ? 'rotate-[25deg]'
+                  : activeReaction === 'happy'
+                  ? 'rotate-[20deg]'
                   : 'rotate-0'
               }`}
             >
@@ -406,6 +940,16 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
                 ? 'rotate-[75deg] -translate-y-8 translate-x-3' 
                 : isError 
                 ? '-rotate-[45deg] -translate-y-4' 
+                : activeReaction === 'surprised'
+                ? 'rotate-[25deg] translate-x-2'
+                : activeReaction === 'shy'
+                ? '-rotate-[16deg] -translate-x-1.5'
+                : activeReaction === 'tickle'
+                ? 'rotate-[15deg] translate-y-0.5'
+                : activeReaction === 'happy'
+                ? 'rotate-[38deg] -translate-y-2'
+                : activeReaction === 'curious'
+                ? '-rotate-[14deg]'
                 : isPresenting 
                 ? '-rotate-[55deg] translate-x-4 -translate-y-4' 
                 : isLookingAtForm 
@@ -428,6 +972,10 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
               className={`transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] origin-[169px_186px] ${
                 isCoveringEyes
                   ? '-rotate-[80deg]'
+                  : activeReaction === 'shy'
+                  ? '-rotate-[25deg]'
+                  : activeReaction === 'happy'
+                  ? '-rotate-[20deg]'
                   : 'rotate-0'
               }`}
             >
@@ -441,11 +989,11 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
                   cx="169" 
                   cy="214" 
                   r="5" 
-                  fill={isCelebrating ? '#10B981' : '#38BDF8'} 
+                  fill={isCelebrating || activeReaction === 'happy' ? '#10B981' : '#38BDF8'} 
                   filter="url(#eyeGlow)" 
                 />
                 {/* Pointing finger / Presentation indicator when presenting */}
-                {(isPresenting || isLookingAtForm) && !isCoveringEyes && !isCelebrating && (
+                {(isPresenting || isLookingAtForm) && !isCoveringEyes && !isCelebrating && !activeReaction && (
                   <path 
                     d="M174 212 L188 207 L174 217 Z" 
                     fill="#38BDF8" 

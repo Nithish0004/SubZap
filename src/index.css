@@ -55,9 +55,44 @@ html.dark body {
   animation: idleFloat 3.6s ease-in-out infinite;
 }
 
+@keyframes botWiggle {
+  0%, 100% { transform: rotate(0deg) translateX(0); }
+  20% { transform: rotate(-3.5deg) translateX(-2.5px); }
+  40% { transform: rotate(3.5deg) translateX(2.5px); }
+  60% { transform: rotate(-2.5deg) translateX(-1.5px); }
+  80% { transform: rotate(2.5deg) translateX(1.5px); }
+}
+
+.animate-bot-wiggle {
+  animation: botWiggle 0.65s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes botBounceSmall {
+  0%, 100% { transform: translateY(0) scale(1); }
+  35% { transform: translateY(-7px) scale(1.02); }
+  65% { transform: translateY(-2px) scale(0.99); }
+}
+
+.animate-bot-bounce {
+  animation: botBounceSmall 0.65s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes botSurpriseJump {
+  0%, 100% { transform: translateY(0) scale(1); }
+  25% { transform: translateY(-10px) scale(1.03); }
+  60% { transform: translateY(-1px) scale(0.98); }
+}
+
+.animate-bot-surprise {
+  animation: botSurpriseJump 0.65s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-idle-float,
-  .animate-shake {
+  .animate-shake,
+  .animate-bot-wiggle,
+  .animate-bot-bounce,
+  .animate-bot-surprise {
     animation: none !important;
   }
 }
