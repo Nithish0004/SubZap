@@ -22,6 +22,7 @@ import {
   PASSWORD_COMPLEXITY_REGEX 
 } from './PasswordRequirementsBar';
 import { ZapBotMascot, MascotMood } from './ZapBotMascot';
+import { AuthBackground } from './AuthBackground';
 
 type AuthViewMode = 'signin' | 'signup' | 'verify_email' | 'forgot_password';
 
@@ -469,11 +470,10 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
     <div 
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 dark:bg-black/90 backdrop-blur-md overflow-hidden select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 overflow-hidden select-none"
     >
-      {/* Ambient background soft glow effects */}
-      <div className="fixed -top-32 -left-32 w-80 h-80 bg-indigo-500/15 dark:bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="fixed -bottom-32 -right-32 w-80 h-80 bg-purple-500/15 dark:bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+      {/* Dynamic Fintech / SaaS Ambient Background */}
+      <AuthBackground />
 
       {/* 
         FIXED ANIMATION STAGE:
@@ -482,7 +482,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
       */}
       <div 
         id="auth-animation-stage"
-        className="relative w-full max-w-[820px] h-[650px] max-h-[94vh] flex items-center justify-center md:justify-between md:gap-4 overflow-hidden"
+        className="relative z-10 w-full max-w-[840px] h-[650px] max-h-[94vh] flex items-center justify-center md:justify-between md:gap-6 overflow-hidden"
       >
         {/* 
           DESKTOP CHARACTER STAGE (Visible on md and up)
@@ -493,19 +493,23 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
           Scene 5: Victory celebration pose
         */}
         <div 
-          className={`hidden md:flex flex-col items-center justify-center w-[300px] h-full shrink-0 relative transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          className={`hidden md:flex flex-col items-center justify-center w-[310px] h-full shrink-0 relative transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             sceneStep === 'entering'
               ? '-translate-x-16 opacity-0'
               : 'translate-x-0 opacity-100'
           }`}
         >
           {/* SubZap Brand Title above mascot */}
-          <div className="text-center mb-3">
-            <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-              Smart Subscription Management
+          <div className="text-center mb-4">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/10 dark:bg-indigo-400/10 border border-indigo-500/20 text-indigo-300 text-[11px] font-semibold tracking-wide mb-2.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Intelligent Protection</span>
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-sm">
+              Subscription Control
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-[240px] mx-auto">
-              Automate tracking, prevent unwanted renewals, and optimize cash flow.
+            <p className="text-xs text-slate-300/85 dark:text-slate-400 mt-1 max-w-[250px] mx-auto leading-relaxed">
+              Detect sneaky price hikes, cut zombie subscriptions, and keep your hard-earned cash.
             </p>
           </div>
 
@@ -524,7 +528,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
         */}
         <div 
           id="auth-gateway-container"
-          className={`relative w-full max-w-[440px] sm:max-w-[460px] h-[640px] sm:h-[650px] max-h-[94vh] flex flex-col bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/80 dark:border-slate-800/80 rounded-2xl sm:rounded-3xl shadow-2xl shadow-indigo-950/20 dark:shadow-indigo-950/50 p-5 sm:p-7 text-slate-900 dark:text-slate-100 overflow-hidden transition-all duration-600 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          className={`relative w-full max-w-[440px] sm:max-w-[460px] h-[640px] sm:h-[650px] max-h-[94vh] flex flex-col bg-slate-900/80 backdrop-blur-2xl border border-slate-700/60 rounded-2xl sm:rounded-3xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.7),0_0_40px_rgba(99,102,241,0.12)] p-5 sm:p-7 text-slate-100 overflow-hidden transition-all duration-600 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             sceneStep === 'entering'
               ? 'opacity-0 translate-x-10 scale-[0.96] pointer-events-none'
               : isSuccessTransition
@@ -532,11 +536,12 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
               : 'opacity-100 translate-x-0 scale-100 pointer-events-auto'
           }`}
         >
-          {/* Top gradient accent line */}
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400" />
+          {/* Top gradient accent line & subtle inner specular glow */}
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 via-sky-400 to-indigo-500 opacity-90" />
+          <div className="absolute top-0 left-1/4 right-1/4 h-8 bg-indigo-500/10 blur-xl pointer-events-none" />
 
           {/* Clean Header: SubZap Brand */}
-          <div className="flex flex-col items-center text-center shrink-0 mb-2">
+          <div className="flex flex-col items-center text-center shrink-0 mb-3">
             {/* Mobile Mascot: Intelligently rendered compactly above the tabs for small devices */}
             <div className="md:hidden mb-1 flex justify-center">
               <ZapBotMascot 
@@ -547,23 +552,28 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
               />
             </div>
 
-            <div className="hidden md:flex items-center gap-2 mb-1">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-400 p-0.5 shadow-md shadow-indigo-500/25">
-                <div className="w-full h-full bg-white dark:bg-slate-950 rounded-[10px] flex items-center justify-center">
-                  <Zap className="w-4 h-4 text-indigo-600 dark:text-indigo-400 fill-indigo-600/20" />
+            <div className="hidden md:flex items-center gap-2.5 mb-1.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 p-[1.5px] shadow-md shadow-indigo-500/30">
+                <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+                  <Zap className="w-4 h-4 text-indigo-400 fill-indigo-400/20" />
                 </div>
               </div>
-              <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                Sub<span className="text-indigo-600 dark:text-indigo-400">Zap</span>
-              </h2>
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-xl font-black tracking-tight text-white">
+                  Sub<span className="bg-gradient-to-r from-indigo-400 to-sky-400 bg-clip-text text-transparent">Zap</span>
+                </h2>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                  Vault
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Animated Sliding Pill Tab Selector (Active in Sign In / Create Account modes) */}
-          <div className="relative grid grid-cols-2 p-1 bg-slate-100/90 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-700/60 text-xs font-semibold shrink-0 mb-3">
+          <div className="relative grid grid-cols-2 p-1 bg-slate-950/60 rounded-xl border border-slate-800/90 text-xs font-semibold shrink-0 mb-3 shadow-inner">
             {/* Sliding pill indicator */}
             <div
-              className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-lg bg-white dark:bg-slate-900 shadow-xs border border-slate-200/60 dark:border-slate-700/60 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none pointer-events-none ${
+              className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-lg bg-indigo-600/90 shadow-md shadow-indigo-900/50 border border-indigo-400/30 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none pointer-events-none ${
                 isSignUp ? 'translate-x-[calc(100%+8px)]' : 'translate-x-0'
               }`}
             />
@@ -573,8 +583,8 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
               onClick={() => switchMode('signin')}
               className={`relative z-10 py-2 rounded-lg text-center transition-colors cursor-pointer font-bold ${
                 !isSignUp
-                  ? 'text-indigo-600 dark:text-indigo-400'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'text-white'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Sign In
@@ -585,8 +595,8 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
               onClick={() => switchMode('signup')}
               className={`relative z-10 py-2 rounded-lg text-center transition-colors cursor-pointer font-bold ${
                 isSignUp
-                  ? 'text-indigo-600 dark:text-indigo-400'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'text-white'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Create Account
@@ -595,9 +605,9 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
 
           {/* Global Error Banner */}
           {formError && (
-            <div className="shrink-0 mb-2.5 p-2.5 text-xs text-rose-800 dark:text-rose-200 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/70 rounded-xl space-y-1.5 transition-all">
+            <div className="shrink-0 mb-2.5 p-2.5 text-xs text-rose-200 bg-rose-950/60 border border-rose-800/80 rounded-xl space-y-1.5 transition-all shadow-sm">
               <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
                 <div className="flex-1 font-medium leading-tight">{formError}</div>
                 <button 
                   type="button" 
@@ -607,7 +617,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                     setUnverifiedNotice(false);
                     triggerMascotMood('idle', 500);
                   }} 
-                  className="text-rose-400 hover:text-rose-700 dark:hover:text-rose-200 cursor-pointer"
+                  className="text-rose-400 hover:text-rose-200 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -615,12 +625,12 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
 
               {/* Unverified account notice */}
               {unverifiedNotice && (
-                <div className="pt-1.5 border-t border-rose-200/60 dark:border-rose-900/60 flex flex-wrap items-center gap-2">
+                <div className="pt-1.5 border-t border-rose-900/60 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     disabled={isSubmitting || resendTimer > 0}
                     onClick={handleResendVerification}
-                    className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-60"
+                    className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-60 shadow-sm"
                   >
                     {isSubmitting && actionType === 'resend_email' ? (
                       <>
@@ -640,7 +650,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                       setFormError('');
                       setViewMode('verify_email');
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold text-xs cursor-pointer hover:bg-rose-50 dark:hover:bg-slate-700 transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 border border-rose-800/70 text-rose-300 font-semibold text-xs cursor-pointer hover:bg-slate-700 transition-colors"
                   >
                     Go to Verification
                   </button>
@@ -649,15 +659,15 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
 
               {/* Existing account prompt */}
               {existingAccountEmail && viewMode === 'signup' && (
-                <div className="pt-1.5 border-t border-rose-200/60 dark:border-rose-900/60 flex items-center justify-between">
-                  <span className="text-rose-700 dark:text-rose-300 text-[11px]">Already have an account?</span>
+                <div className="pt-1.5 border-t border-rose-900/60 flex items-center justify-between">
+                  <span className="text-rose-300 text-[11px]">Already have an account?</span>
                   <button
                     type="button"
                     onClick={() => {
                       setEmailInput(existingAccountEmail);
                       switchMode('signin');
                     }}
-                    className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] cursor-pointer transition-colors"
+                    className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] cursor-pointer transition-colors"
                   >
                     Sign In
                   </button>
@@ -668,13 +678,13 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
 
           {/* Resend success notice */}
           {resendSuccessNotice && viewMode !== 'verify_email' && (
-            <div className="shrink-0 mb-2.5 p-2.5 rounded-xl text-xs bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
+            <div className="shrink-0 mb-2.5 p-2.5 rounded-xl text-xs bg-emerald-950/60 text-emerald-200 border border-emerald-800/80 flex items-start gap-2 shadow-sm">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
               <div className="flex-1 font-medium leading-tight">{resendSuccessNotice}</div>
               <button
                 type="button"
                 onClick={() => setResendSuccessNotice('')}
-                className="text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-200 cursor-pointer"
+                className="text-emerald-400 hover:text-emerald-200 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -706,7 +716,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                   type="button"
                   disabled={isSubmitting}
                   onClick={handleGoogleSignIn}
-                  className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-100 font-semibold text-sm shadow-xs transition-all hover:border-slate-400 dark:hover:border-slate-600 disabled:opacity-60 cursor-pointer active:scale-[0.99]"
+                  className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-750/90 border border-slate-700/80 hover:border-slate-600 text-slate-100 font-semibold text-sm shadow-xs transition-all duration-200 hover:shadow-[0_0_20px_rgba(255,255,255,0.06)] disabled:opacity-60 cursor-pointer active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
                 >
                   <GoogleIcon className="w-5 h-5" />
                   <span>Continue with Google</span>
@@ -714,21 +724,21 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
 
                 {/* Centered Divider */}
                 <div className="w-full my-3 flex items-center justify-center">
-                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-                  <span className="shrink-0 px-3 text-xs font-medium text-slate-400 dark:text-slate-500 select-none text-center">
-                    Or with Email or Mobile
+                  <div className="flex-1 h-px bg-slate-800" />
+                  <span className="shrink-0 px-3 text-xs font-medium text-slate-400 select-none text-center">
+                    Or with Email
                   </span>
-                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                  <div className="flex-1 h-px bg-slate-800" />
                 </div>
 
                 {/* Sign In Form */}
                 <form onSubmit={handleSignInSubmit} className="space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
                       Email Address
                     </label>
-                    <div className="relative flex items-center">
-                      <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                    <div className="relative flex items-center group">
+                      <Mail className="absolute left-3 w-4 h-4 text-slate-400 group-focus-within:text-indigo-400 transition-colors pointer-events-none" />
                       <input
                         id="signin-email-input"
                         type="email"
@@ -746,17 +756,17 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                           }
                         }}
                         onChange={(e) => setEmailInput(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950/60 border border-slate-750 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 hover:border-slate-600 transition-all"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
                       Password
                     </label>
-                    <div className="relative flex items-center">
-                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                    <div className="relative flex items-center group">
+                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 group-focus-within:text-indigo-400 transition-colors pointer-events-none" />
                       <input
                         id="signin-password-input"
                         type={showPassword ? 'text' : 'password'}
@@ -774,18 +784,18 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                           }
                         }}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-9 pr-10 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                        className="w-full pl-9 pr-10 py-2 rounded-xl bg-slate-950/60 border border-slate-750 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 hover:border-slate-600 transition-all"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
+                        className="absolute right-3 text-slate-400 hover:text-slate-200 cursor-pointer p-1 transition-colors"
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
 
-                    <div className="flex items-center justify-end pt-1">
+                    <div className="flex items-center justify-end pt-1.5">
                       <button
                         id="forgot-password-link"
                         type="button"
@@ -797,7 +807,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                           setViewMode('forgot_password');
                           triggerMascotMood('idle', 1000);
                         }}
-                        className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                        className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer transition-colors"
                       >
                         Forgot Password?
                       </button>
@@ -809,7 +819,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                     id="signin-submit-btn"
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer mt-1"
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer mt-1 hover:shadow-indigo-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/50"
                   >
                     {isSubmitting && actionType === 'signin' ? (
                       <>
@@ -826,13 +836,13 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                 </form>
 
                 {/* Call to action */}
-                <div className="pt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+                <div className="pt-2 text-center text-xs text-slate-400">
                   <span>New to SubZap? </span>
                   <button
                     id="create-account-prominent-link"
                     type="button"
                     onClick={() => switchMode('signup')}
-                    className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                    className="font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer transition-colors"
                   >
                     Create Account
                   </button>
@@ -853,7 +863,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                   type="button"
                   disabled={isSubmitting}
                   onClick={handleGoogleSignIn}
-                  className="w-full flex items-center justify-center gap-3 py-2 px-4 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-100 font-semibold text-sm shadow-xs transition-all hover:border-slate-400 dark:hover:border-slate-600 disabled:opacity-60 cursor-pointer active:scale-[0.99]"
+                  className="w-full flex items-center justify-center gap-3 py-2 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-750/90 border border-slate-700/80 hover:border-slate-600 text-slate-100 font-semibold text-sm shadow-xs transition-all duration-200 hover:shadow-[0_0_20px_rgba(255,255,255,0.06)] disabled:opacity-60 cursor-pointer active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
                 >
                   <GoogleIcon className="w-5 h-5" />
                   <span>Continue with Google</span>
@@ -861,21 +871,21 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
 
                 {/* Centered Divider */}
                 <div className="w-full my-2 flex items-center justify-center">
-                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-                  <span className="shrink-0 px-3 text-xs font-medium text-slate-400 dark:text-slate-500 select-none text-center">
-                    Or with Email or Mobile
+                  <div className="flex-1 h-px bg-slate-800" />
+                  <span className="shrink-0 px-3 text-xs font-medium text-slate-400 select-none text-center">
+                    Or with Email
                   </span>
-                  <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                  <div className="flex-1 h-px bg-slate-800" />
                 </div>
 
                 <form onSubmit={handleSignUpSubmit} className="space-y-2">
                   {/* Field 1: Full Name */}
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
+                    <label className="block text-xs font-semibold text-slate-300 mb-0.5">
                       Full Name
                     </label>
-                    <div className="relative flex items-center">
-                      <UserIcon className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                    <div className="relative flex items-center group">
+                      <UserIcon className="absolute left-3 w-4 h-4 text-slate-400 group-focus-within:text-indigo-400 transition-colors pointer-events-none" />
                       <input
                         id="signup-name-input"
                         type="text"
@@ -893,18 +903,18 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                           }
                         }}
                         onChange={(e) => setFullName(e.target.value)}
-                        className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                        className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950/60 border border-slate-750 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 hover:border-slate-600 transition-all"
                       />
                     </div>
                   </div>
 
                   {/* Field 2: Email */}
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
+                    <label className="block text-xs font-semibold text-slate-300 mb-0.5">
                       Email Address
                     </label>
-                    <div className="relative flex items-center">
-                      <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                    <div className="relative flex items-center group">
+                      <Mail className="absolute left-3 w-4 h-4 text-slate-400 group-focus-within:text-indigo-400 transition-colors pointer-events-none" />
                       <input
                         id="signup-email-input"
                         type="email"
@@ -925,18 +935,18 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                           setEmailInput(e.target.value);
                           if (existingAccountEmail) setExistingAccountEmail(null);
                         }}
-                        className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                        className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950/60 border border-slate-750 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 hover:border-slate-600 transition-all"
                       />
                     </div>
                   </div>
 
                   {/* Field 3: Password */}
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
+                    <label className="block text-xs font-semibold text-slate-300 mb-0.5">
                       Create Password
                     </label>
-                    <div className={`relative flex items-center ${shouldShakePassword ? 'animate-shake' : ''}`}>
-                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                    <div className={`relative flex items-center group ${shouldShakePassword ? 'animate-shake' : ''}`}>
+                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 group-focus-within:text-indigo-400 transition-colors pointer-events-none" />
                       <input
                         id="signup-password-input"
                         type={showPassword ? 'text' : 'password'}
@@ -957,16 +967,16 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                           setPassword(e.target.value);
                           if (passwordComplexityError) setPasswordComplexityError(false);
                         }}
-                        className={`w-full pl-9 pr-10 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 transition-colors ${
+                        className={`w-full pl-9 pr-10 py-1.5 rounded-xl bg-slate-950/60 border text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 transition-all ${
                           passwordComplexityError
-                            ? 'border-rose-400 ring-1 ring-rose-400'
-                            : 'border-slate-200 dark:border-slate-700 focus:ring-indigo-500/20 focus:border-indigo-500'
+                            ? 'border-rose-400 ring-2 ring-rose-400/30'
+                            : 'border-slate-750 focus:border-indigo-500 focus:ring-indigo-500/20 hover:border-slate-600'
                         }`}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
+                        className="absolute right-3 text-slate-400 hover:text-slate-200 cursor-pointer p-1 transition-colors"
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -978,15 +988,15 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                   {/* Field 4: Confirm Password */}
                   <div>
                     <div className="flex items-center justify-between mb-0.5">
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <label className="text-xs font-semibold text-slate-300">
                         Confirm Password
                       </label>
                       {confirmPassword.length > 0 && (
                         <span
                           className={`text-[11px] font-semibold flex items-center gap-1 ${
                             password === confirmPassword
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-rose-600 dark:text-rose-400'
+                              ? 'text-emerald-400'
+                              : 'text-rose-400'
                           }`}
                         >
                           {password === confirmPassword ? (
@@ -1004,8 +1014,8 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                       )}
                     </div>
 
-                    <div className="relative flex items-center">
-                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                    <div className="relative flex items-center group">
+                      <KeyRound className="absolute left-3 w-4 h-4 text-slate-400 group-focus-within:text-indigo-400 transition-colors pointer-events-none" />
                       <input
                         id="signup-confirm-password-input"
                         type={showConfirmPassword ? 'text' : 'password'}
@@ -1023,12 +1033,12 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                           }
                         }}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full pl-9 pr-10 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                        className="w-full pl-9 pr-10 py-1.5 rounded-xl bg-slate-950/60 border border-slate-750 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 hover:border-slate-600 transition-all"
                       />
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
+                        className="absolute right-3 text-slate-400 hover:text-slate-200 cursor-pointer p-1 transition-colors"
                       >
                         {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -1040,7 +1050,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                     id="signup-submit-btn"
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer mt-1"
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer mt-1 hover:shadow-indigo-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/50"
                   >
                     {isSubmitting && actionType === 'signup' ? (
                       <>
@@ -1056,12 +1066,12 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                   </button>
                 </form>
 
-                <div className="text-center text-xs text-slate-500 dark:text-slate-400 pt-1">
+                <div className="text-center text-xs text-slate-400 pt-1">
                   <span>Already registered? </span>
                   <button
                     type="button"
                     onClick={() => switchMode('signin')}
-                    className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                    className="font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer transition-colors"
                   >
                     Sign In
                   </button>
@@ -1071,18 +1081,18 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
 
             {/* OVERLAY VIEW: VERIFY EMAIL */}
             {viewMode === 'verify_email' && (
-              <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-20 overflow-y-auto space-y-4 py-2 px-1 transition-opacity animate-in fade-in duration-200">
+              <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-md z-20 overflow-y-auto space-y-4 py-2 px-1 transition-opacity animate-in fade-in duration-200">
                 <div className="text-center space-y-2">
-                  <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm">
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-sm">
                     <Mail className="w-6 h-6" />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  <h3 className="text-xl font-bold text-white">
                     Verify your email
                   </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-sm mx-auto">
+                  <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
                     We've sent a verification link to your email address. Please click the link to activate your SubZap account.
                   </p>
-                  <div className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 text-center break-all">
+                  <div className="py-2 px-3 rounded-xl bg-slate-950/70 border border-slate-800 font-mono text-xs font-semibold text-indigo-300 text-center break-all">
                     {verificationEmail || user?.email || 'your email'}
                   </div>
                 </div>
@@ -1091,15 +1101,15 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                 {verificationNotice && (
                   <div className={`p-2.5 rounded-xl text-xs flex items-start gap-2 ${
                     verificationNotice.type === 'success'
-                      ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
+                      ? 'bg-emerald-950/60 text-emerald-200 border border-emerald-800'
                       : verificationNotice.type === 'error'
-                      ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800'
-                      : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800'
+                      ? 'bg-rose-950/60 text-rose-200 border border-rose-800'
+                      : 'bg-indigo-950/60 text-indigo-200 border border-indigo-800'
                   }`}>
                     {verificationNotice.type === 'success' ? (
-                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
                     )}
                     <span className="leading-relaxed">{verificationNotice.message}</span>
                   </div>
@@ -1112,7 +1122,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                     type="button"
                     disabled={isSubmitting}
                     onClick={handleCheckVerified}
-                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99] disabled:opacity-60"
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99] disabled:opacity-60"
                   >
                     {isSubmitting && actionType === 'check_verified' ? (
                       <>
@@ -1132,7 +1142,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                     type="button"
                     disabled={isSubmitting || resendTimer > 0}
                     onClick={handleResendVerification}
-                    className="w-full py-2 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60"
+                    className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60 border border-slate-700"
                   >
                     {isSubmitting && actionType === 'resend_email' ? (
                       <>
@@ -1152,7 +1162,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                     type="button"
                     disabled={isSubmitting}
                     onClick={handleBackToSignIn}
-                    className="w-full py-1.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    className="w-full py-1.5 px-4 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Back to Sign In</span>
@@ -1163,8 +1173,8 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
 
             {/* OVERLAY VIEW: FORGOT PASSWORD */}
             {viewMode === 'forgot_password' && (
-              <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 z-20 overflow-y-auto space-y-4 py-2 px-1 transition-opacity animate-in fade-in duration-200">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-md z-20 overflow-y-auto space-y-4 py-2 px-1 transition-opacity animate-in fade-in duration-200">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                   <button
                     type="button"
                     onClick={() => {
@@ -1172,7 +1182,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                       setFormError('');
                       setForgotSuccessNotice('');
                     }}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white cursor-pointer transition-colors"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Back to Sign In</span>
@@ -1180,10 +1190,10 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                 </div>
 
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  <h3 className="text-base font-bold text-white">
                     Reset Account Password
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5">
                     Enter your registered email address to receive a secure password reset link via Firebase.
                   </p>
                 </div>
@@ -1191,8 +1201,8 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                 {/* Success notice */}
                 {forgotSuccessNotice ? (
                   <div className="space-y-3 py-2">
-                    <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800 text-xs text-emerald-200 flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                       <span className="leading-relaxed">{forgotSuccessNotice}</span>
                     </div>
                     <button
@@ -1202,7 +1212,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                         setFormError('');
                         setForgotSuccessNotice('');
                       }}
-                      className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all"
                     >
                       <span>Return to Sign In</span>
                       <ArrowRight className="w-4 h-4" />
@@ -1211,11 +1221,11 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                 ) : (
                   <form onSubmit={handleForgotPasswordSubmit} className="space-y-3.5">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
                         Email Address
                       </label>
-                      <div className="relative flex items-center">
-                        <Mail className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <div className="relative flex items-center group">
+                        <Mail className="absolute left-3 w-4 h-4 text-slate-400 group-focus-within:text-indigo-400 transition-colors pointer-events-none" />
                         <input
                           id="forgot-email-input"
                           type="email"
@@ -1233,7 +1243,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                             }
                           }}
                           onChange={(e) => setForgotEmail(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                          className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950/60 border border-slate-750 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 hover:border-slate-600 transition-all"
                         />
                       </div>
                     </div>
@@ -1242,7 +1252,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                       id="forgot-send-reset-btn"
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 active:scale-[0.99]"
+                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 active:scale-[0.99]"
                     >
                       {isSubmitting && actionType === 'forgot_password' ? (
                         <>

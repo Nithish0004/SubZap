@@ -87,12 +87,44 @@ html.dark body {
   animation: botSurpriseJump 0.65s cubic-bezier(0.18, 0.89, 0.32, 1.28);
 }
 
+@keyframes orbFloat1 {
+  0%, 100% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(45px, 35px) scale(1.08); }
+  66% { transform: translate(-25px, 10px) scale(0.96); }
+}
+
+@keyframes orbFloat2 {
+  0%, 100% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(-50px, -40px) scale(0.95); }
+  66% { transform: translate(20px, -15px) scale(1.06); }
+}
+
+@keyframes orbFloat3 {
+  0%, 100% { transform: translate(0px, 0px); }
+  50% { transform: translate(30px, -25px); }
+}
+
+.animate-orb-1 {
+  animation: orbFloat1 22s ease-in-out infinite;
+}
+
+.animate-orb-2 {
+  animation: orbFloat2 26s ease-in-out infinite;
+}
+
+.animate-orb-3 {
+  animation: orbFloat3 28s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-idle-float,
   .animate-shake,
   .animate-bot-wiggle,
   .animate-bot-bounce,
-  .animate-bot-surprise {
+  .animate-bot-surprise,
+  .animate-orb-1,
+  .animate-orb-2,
+  .animate-orb-3 {
     animation: none !important;
   }
 }
