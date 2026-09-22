@@ -111,6 +111,7 @@ interface ZapBotMascotProps {
   className?: string;
   isCompact?: boolean;
   isLoading?: boolean;
+  isAssembling?: boolean;
 }
 
 export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
@@ -119,6 +120,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
   className = '',
   isCompact = false,
   isLoading = false,
+  isAssembling = false,
 }) => {
   // Idle blink cycle
   const [isBlinking, setIsBlinking] = useState(false);
@@ -486,7 +488,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
 
   // Dynamic message bubble text resolution based on state, mood & active reaction
   let bubbleText = '';
-  if (mood === 'entering') {
+  if (mood === 'entering' || isAssembling) {
     bubbleText = '';
   } else if (isCelebrating) {
     bubbleText = "You're in! 🎉";
@@ -529,7 +531,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
     >
       {/* Dynamic Contextual Message Bubble above the bot */}
       <div className={`w-full flex justify-center mb-2 z-10 transition-all duration-300 ${
-        bubbleText && mood !== 'entering' 
+        bubbleText && mood !== 'entering' && !isAssembling
           ? 'opacity-100 scale-100 translate-y-0' 
           : 'opacity-0 scale-95 translate-y-1 pointer-events-none'
       }`}>
@@ -550,7 +552,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
         onMouseEnter={handleMouseEnterBot}
         onMouseLeave={handleMouseLeaveBot}
         className={`relative transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer group ${
-          mood === 'entering' 
+          mood === 'entering' && !isAssembling
             ? '-translate-x-12 opacity-0 scale-90' 
             : 'translate-x-0 opacity-100 scale-100'
         }`}
@@ -558,7 +560,9 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
         <svg
           viewBox="0 0 240 280"
           className={`${isCompact ? 'w-28 h-32' : 'w-48 h-56 sm:w-56 sm:h-64'} drop-shadow-xl transition-all duration-500 ${
-            activeReaction === 'tickle'
+            isAssembling
+              ? ''
+              : activeReaction === 'tickle'
               ? 'animate-bot-wiggle'
               : activeReaction === 'surprised'
               ? 'animate-bot-surprise'
@@ -614,7 +618,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
           </defs>
 
           {/* ================= THRUSTRER / HOVER GLOW BASE ================= */}
-          <g className="transition-all duration-500">
+          <g className={`transition-all duration-500 ${isAssembling ? 'animate-assemble-thruster origin-bottom' : ''}`}>
             {/* Thruster energy ring */}
             <ellipse 
               cx="120" 
@@ -642,7 +646,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
           </g>
 
           {/* ================= TORSO & CORE ================= */}
-          <g className="transition-all duration-300">
+          <g className={`transition-all duration-300 ${isAssembling ? 'animate-assemble-torso origin-center' : ''}`}>
             {/* Main torso armor */}
             <rect 
               x="82" 
@@ -658,20 +662,24 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
             <path d="M82 165 C82 155 86 148 94 145 L94 210 C86 207 82 198 82 190 Z" fill="#CBD5E1" />
             <path d="M158 165 C158 155 154 148 146 145 L146 210 C154 207 158 198 158 190 Z" fill="#CBD5E1" />
 
-            {/* Glowing SubZap chest reactor */}
-            <circle cx="120" cy="182" r="18" fill="url(#darkPlate)" stroke="#6366F1" strokeWidth="2.5" />
-            <circle cx="120" cy="182" r="12" fill="url(#zapCore)" filter="url(#eyeGlow)" opacity="0.9" />
-            {/* Mini lightning bolt icon inside core */}
-            <path 
-              d="M121 173 L114 182 L119 182 L118 191 L126 181 L121 181 Z" 
-              fill="#FFFFFF" 
-            />
+            {/* Glowing SubZap chest reactor / brand lightning element */}
+            <g className={isAssembling ? 'animate-assemble-core origin-[120px_182px]' : ''}>
+              <circle cx="120" cy="182" r="18" fill="url(#darkPlate)" stroke="#6366F1" strokeWidth="2.5" />
+              <circle cx="120" cy="182" r="12" fill="url(#zapCore)" filter="url(#eyeGlow)" opacity="0.9" />
+              {/* Mini lightning bolt icon inside core */}
+              <path 
+                d="M121 173 L114 182 L119 182 L118 191 L126 181 L121 181 Z" 
+                fill="#FFFFFF" 
+              />
+            </g>
           </g>
 
           {/* ================= HEAD & VISOR ================= */}
           <g 
             className={`transition-transform duration-500 ease-out origin-[120px_130px] ${
-              isError 
+              isAssembling
+                ? 'animate-assemble-head'
+                : isError 
                 ? '-rotate-6 translate-y-1' 
                 : isCelebrating 
                 ? 'rotate-3 -translate-y-1.5' 
@@ -696,25 +704,27 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
             <rect x="108" y="126" width="24" height="18" rx="5" fill="url(#darkPlate)" />
 
             {/* Antenna / Energy Crest */}
-            <path 
-              d="M118 56 L122 56 L122 34 L118 34 Z" 
-              fill="url(#darkPlate)" 
-            />
-            {/* Glowing lightning crest orb */}
-            <circle 
-              cx="120" 
-              cy="28" 
-              r="8" 
-              fill="url(#zapCore)" 
-              stroke="#FFFFFF" 
-              strokeWidth="1.5" 
-              filter="url(#eyeGlow)" 
-              className={isCelebrating ? 'animate-ping' : ''}
-            />
-            <path 
-              d="M121 23 L117 28 L120 28 L119 33 L123 27 L120 27 Z" 
-              fill="#FFFFFF" 
-            />
+            <g className={isAssembling ? 'animate-assemble-antenna origin-[120px_56px]' : ''}>
+              <path 
+                d="M118 56 L122 56 L122 34 L118 34 Z" 
+                fill="url(#darkPlate)" 
+              />
+              {/* Glowing lightning crest orb */}
+              <circle 
+                cx="120" 
+                cy="28" 
+                r="8" 
+                fill="url(#zapCore)" 
+                stroke="#FFFFFF" 
+                strokeWidth="1.5" 
+                filter="url(#eyeGlow)" 
+                className={isCelebrating ? 'animate-ping' : ''}
+              />
+              <path 
+                d="M121 23 L117 28 L120 28 L119 33 L123 27 L120 27 Z" 
+                fill="#FFFFFF" 
+              />
+            </g>
 
             {/* Head Helmet Shell */}
             <rect 
@@ -879,7 +889,9 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
           <g 
             id="bot-left-shoulder"
             className={`transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] origin-[72px_155px] ${
-              isCoveringEyes 
+              isAssembling
+                ? 'animate-assemble-arm-left'
+                : isCoveringEyes 
                 ? 'rotate-[155deg] -translate-y-1' 
                 : isCelebrating 
                 ? '-rotate-[75deg] -translate-y-8 -translate-x-3' 
@@ -934,7 +946,9 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
           <g 
             id="bot-right-shoulder"
             className={`transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] origin-[168px_155px] ${
-              isCoveringEyes 
+              isAssembling
+                ? 'animate-assemble-arm-right'
+                : isCoveringEyes 
                 ? '-rotate-[155deg] -translate-y-1' 
                 : isCelebrating 
                 ? 'rotate-[75deg] -translate-y-8 translate-x-3' 
@@ -1003,6 +1017,34 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
               </g>
             </g>
           </g>
+
+          {/* ================= ASSEMBLY ENERGY SPARKS & FLASH RING ================= */}
+          {isAssembling && (
+            <g className="pointer-events-none">
+              {/* Spark 1: Top-Left converging to chest core */}
+              <circle cx="48" cy="70" r="2.5" fill="#38BDF8" className="animate-assemble-spark-1" filter="url(#eyeGlow)" />
+              {/* Spark 2: Top-Right converging to chest core */}
+              <circle cx="192" cy="74" r="2" fill="#818CF8" className="animate-assemble-spark-2" filter="url(#eyeGlow)" />
+              {/* Spark 3: Mid-Left converging to chest core */}
+              <circle cx="34" cy="170" r="2.2" fill="#6366F1" className="animate-assemble-spark-3" filter="url(#eyeGlow)" />
+              {/* Spark 4: Mid-Right converging to chest core */}
+              <circle cx="206" cy="175" r="2" fill="#38BDF8" className="animate-assemble-spark-4" filter="url(#eyeGlow)" />
+              {/* Spark 5: Bottom-Left thruster spark */}
+              <circle cx="68" cy="240" r="2.5" fill="#A855F7" className="animate-assemble-spark-5" filter="url(#eyeGlow)" />
+
+              {/* Lock-in energy flash ring bursting at 800-1000ms */}
+              <circle 
+                cx="120" 
+                cy="182" 
+                r="16" 
+                fill="none" 
+                stroke="#38BDF8" 
+                strokeWidth="2" 
+                className="animate-assemble-flash"
+                filter="url(#eyeGlow)"
+              />
+            </g>
+          )}
         </svg>
       </div>
     </div>

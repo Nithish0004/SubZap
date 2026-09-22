@@ -51,11 +51,11 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
   });
 
   // Storytelling sequence states
-  // Scene 1: Character enters (0 - 650ms)
-  // Scene 2: Character presents the form (650 - 1300ms)
-  // Scene 3: Form is ready & idle interactive state (1300ms+)
-  const [sceneStep, setSceneStep] = useState<'entering' | 'presenting' | 'interactive'>('entering');
-  const [mascotMood, setMascotMood] = useState<MascotMood>('entering');
+  // Scene 1: Coordinated 1-second Bot Assembly & Card Power-on Activation (0 - 1000ms)
+  // Scene 2: Interactive idle state (1000ms+)
+  const [isInitialAssembling, setIsInitialAssembling] = useState(true);
+  const [sceneStep, setSceneStep] = useState<'entering' | 'interactive'>('entering');
+  const [mascotMood, setMascotMood] = useState<MascotMood>('idle');
   const moodResetTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Input fields for Sign In / Sign Up
@@ -104,30 +104,25 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
     }, durationMs);
   };
 
-  // Scene 1 -> Scene 2 -> Scene 3 Choreographed entrance on mount
+  // Coordinated 1-second assembly sequence on page load
   useEffect(() => {
     // If already in success transition, celebrate immediately
     if (isSuccessTransition) {
+      setIsInitialAssembling(false);
       setSceneStep('interactive');
       setMascotMood('celebrating');
       return;
     }
 
-    // Step 1: Character enters into scene
-    const timerPresent = setTimeout(() => {
-      setSceneStep('presenting');
-      setMascotMood('presenting');
-    }, 650);
-
-    // Step 2: Form fully unfolds and character enters idle
-    const timerInteractive = setTimeout(() => {
+    // After 1-second assembly animation completes:
+    const timerAssemble = setTimeout(() => {
+      setIsInitialAssembling(false);
       setSceneStep('interactive');
       setMascotMood('idle');
-    }, 1300);
+    }, 1000);
 
     return () => {
-      clearTimeout(timerPresent);
-      clearTimeout(timerInteractive);
+      clearTimeout(timerAssemble);
       if (moodResetTimer.current) clearTimeout(moodResetTimer.current);
     };
   }, [isSuccessTransition]);
@@ -492,15 +487,16 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
           Scene 4: Reacts to focus (looking vs privacy shielding) & errors
           Scene 5: Victory celebration pose
         */}
+        {/* 
+          DESKTOP CHARACTER STAGE (Visible on md and up)
+          Scene 1: 1-second magnetic assembly of mascot parts & energy pulse
+          Scene 2: Interactive idle hovering, breathing & blinking
+        */}
         <div 
-          className={`hidden md:flex flex-col items-center justify-center w-[310px] h-full shrink-0 relative transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            sceneStep === 'entering'
-              ? '-translate-x-16 opacity-0'
-              : 'translate-x-0 opacity-100'
-          }`}
+          className="hidden md:flex flex-col items-center justify-center w-[310px] h-full shrink-0 relative"
         >
           {/* SubZap Brand Title above mascot */}
-          <div className="text-center mb-4">
+          <div className={`text-center mb-4 ${isInitialAssembling ? 'animate-title-entrance' : ''}`}>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/10 dark:bg-indigo-400/10 border border-indigo-500/20 text-indigo-300 text-[11px] font-semibold tracking-wide mb-2.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span>Intelligent Protection</span>
@@ -518,22 +514,24 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
             mood={effectiveMascotMood} 
             viewMode={viewMode} 
             isLoading={isSubmitting}
+            isAssembling={isInitialAssembling}
           />
         </div>
 
         {/* 
           STATIONARY AUTHENTICATION CARD CONTAINER 
           Rigid dimensions ensure zero layout shifts, jumping, or repositioning.
-          Enters with coordinated presentation in Scene 2, and exits smoothly on Scene 5.
+          Enters with coordinated perspective depth and energy activation in 1.0s,
+          then locks into resting position.
         */}
         <div 
           id="auth-gateway-container"
-          className={`relative w-full max-w-[440px] sm:max-w-[460px] h-[640px] sm:h-[650px] max-h-[94vh] flex flex-col bg-slate-900/80 backdrop-blur-2xl border border-slate-700/60 rounded-2xl sm:rounded-3xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.7),0_0_40px_rgba(99,102,241,0.12)] p-5 sm:p-7 text-slate-100 overflow-hidden transition-all duration-600 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            sceneStep === 'entering'
-              ? 'opacity-0 translate-x-10 scale-[0.96] pointer-events-none'
+          className={`relative w-full max-w-[440px] sm:max-w-[460px] h-[640px] sm:h-[650px] max-h-[94vh] flex flex-col bg-slate-900/80 backdrop-blur-2xl border border-slate-700/60 rounded-2xl sm:rounded-3xl shadow-[0_24px_60px_-15px_rgba(0,0,0,0.7),0_0_40px_rgba(99,102,241,0.12)] p-5 sm:p-7 text-slate-100 overflow-hidden ${
+            isInitialAssembling
+              ? 'animate-card-entrance pointer-events-none'
               : isSuccessTransition
-              ? 'opacity-0 -translate-y-4 scale-[0.97] pointer-events-none'
-              : 'opacity-100 translate-x-0 scale-100 pointer-events-auto'
+              ? 'opacity-0 -translate-y-4 scale-[0.97] pointer-events-none transition-all duration-500'
+              : 'opacity-100 translate-x-0 scale-100 pointer-events-auto transition-all duration-300'
           }`}
         >
           {/* Top gradient accent line & subtle inner specular glow */}
@@ -549,6 +547,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
                 viewMode={viewMode} 
                 isCompact={true} 
                 isLoading={isSubmitting}
+                isAssembling={isInitialAssembling}
               />
             </div>
 
