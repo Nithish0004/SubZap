@@ -104,7 +104,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
     }, durationMs);
   };
 
-  // Coordinated 1-second assembly sequence on page load
+  // Coordinated 2.8-second assembly sequence on page load
   useEffect(() => {
     // If already in success transition, celebrate immediately
     if (isSuccessTransition) {
@@ -114,12 +114,12 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
       return;
     }
 
-    // After 1-second assembly animation completes:
+    // After 2.8-second assembly animation completes:
     const timerAssemble = setTimeout(() => {
       setIsInitialAssembling(false);
       setSceneStep('interactive');
       setMascotMood('idle');
-    }, 1000);
+    }, 2800);
 
     return () => {
       clearTimeout(timerAssemble);
@@ -477,7 +477,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
       */}
       <div 
         id="auth-animation-stage"
-        className="relative z-10 w-full max-w-[840px] h-[650px] max-h-[94vh] flex items-center justify-center md:justify-between md:gap-6 overflow-hidden"
+        className="relative z-10 w-full max-w-[840px] h-[650px] max-h-[94vh] flex items-center justify-center md:justify-between md:gap-6 overflow-visible"
       >
         {/* 
           DESKTOP CHARACTER STAGE (Visible on md and up)

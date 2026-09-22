@@ -526,7 +526,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
   return (
     <div 
       ref={botContainerRef}
-      className={`relative select-none flex flex-col items-center justify-center transition-all duration-500 ${className}`}
+      className={`relative overflow-visible select-none flex flex-col items-center justify-center transition-all duration-500 ${className}`}
       aria-hidden="true"
     >
       {/* Dynamic Contextual Message Bubble above the bot */}
@@ -551,7 +551,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
       <div 
         onMouseEnter={handleMouseEnterBot}
         onMouseLeave={handleMouseLeaveBot}
-        className={`relative transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer group ${
+        className={`relative overflow-visible transition-transform duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer group ${
           mood === 'entering' && !isAssembling
             ? '-translate-x-12 opacity-0 scale-90' 
             : 'translate-x-0 opacity-100 scale-100'
@@ -559,7 +559,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
       >
         <svg
           viewBox="0 0 240 280"
-          className={`${isCompact ? 'w-28 h-32' : 'w-48 h-56 sm:w-56 sm:h-64'} drop-shadow-xl transition-all duration-500 ${
+          className={`${isCompact ? 'w-28 h-32' : 'w-48 h-56 sm:w-56 sm:h-64'} overflow-visible drop-shadow-xl transition-all duration-500 ${
             isAssembling
               ? ''
               : activeReaction === 'tickle'
@@ -618,7 +618,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
           </defs>
 
           {/* ================= THRUSTRER / HOVER GLOW BASE ================= */}
-          <g className={`transition-all duration-500 ${isAssembling ? 'animate-assemble-thruster origin-bottom' : ''}`}>
+          <g className={isAssembling ? 'animate-assemble-thruster origin-bottom' : 'transition-all duration-500'}>
             {/* Thruster energy ring */}
             <ellipse 
               cx="120" 
@@ -646,7 +646,7 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
           </g>
 
           {/* ================= TORSO & CORE ================= */}
-          <g className={`transition-all duration-300 ${isAssembling ? 'animate-assemble-torso origin-center' : ''}`}>
+          <g className={isAssembling ? 'animate-assemble-torso origin-center' : 'transition-all duration-300'}>
             {/* Main torso armor */}
             <rect 
               x="82" 
@@ -676,29 +676,31 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
 
           {/* ================= HEAD & VISOR ================= */}
           <g 
-            className={`transition-transform duration-500 ease-out origin-[120px_130px] ${
+            className={
               isAssembling
                 ? 'animate-assemble-head'
-                : isError 
-                ? '-rotate-6 translate-y-1' 
-                : isCelebrating 
-                ? 'rotate-3 -translate-y-1.5' 
-                : isCoveringEyes 
-                ? '-rotate-6 translate-y-0.5' 
-                : activeReaction === 'shy'
-                ? '-rotate-6 translate-y-0.5'
-                : activeReaction === 'curious'
-                ? 'rotate-6 -translate-y-1'
-                : activeReaction === 'tickle'
-                ? 'rotate-2'
-                : activeReaction === 'surprised'
-                ? '-translate-y-2'
-                : activeReaction === 'happy'
-                ? 'rotate-2 -translate-y-1'
-                : isLookingAtForm 
-                ? 'rotate-3' 
-                : 'rotate-0'
-            }`}
+                : `transition-transform duration-500 ease-out origin-[120px_130px] ${
+                    isError 
+                    ? '-rotate-6 translate-y-1' 
+                    : isCelebrating 
+                    ? 'rotate-3 -translate-y-1.5' 
+                    : isCoveringEyes 
+                    ? '-rotate-6 translate-y-0.5' 
+                    : activeReaction === 'shy'
+                    ? '-rotate-6 translate-y-0.5'
+                    : activeReaction === 'curious'
+                    ? 'rotate-6 -translate-y-1'
+                    : activeReaction === 'tickle'
+                    ? 'rotate-2'
+                    : activeReaction === 'surprised'
+                    ? '-translate-y-2'
+                    : activeReaction === 'happy'
+                    ? 'rotate-2 -translate-y-1'
+                    : isLookingAtForm 
+                    ? 'rotate-3' 
+                    : 'rotate-0'
+                  }`
+            }
           >
             {/* Neck joint */}
             <rect x="108" y="126" width="24" height="18" rx="5" fill="url(#darkPlate)" />
@@ -888,29 +890,31 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
           {/* ================= LEFT ARM ================= */}
           <g 
             id="bot-left-shoulder"
-            className={`transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] origin-[72px_155px] ${
+            className={
               isAssembling
                 ? 'animate-assemble-arm-left'
-                : isCoveringEyes 
-                ? 'rotate-[155deg] -translate-y-1' 
-                : isCelebrating 
-                ? '-rotate-[75deg] -translate-y-8 -translate-x-3' 
-                : isError 
-                ? 'rotate-[20deg] translate-y-1' 
-                : activeReaction === 'surprised'
-                ? '-rotate-[25deg] -translate-x-2'
-                : activeReaction === 'shy'
-                ? 'rotate-[16deg] translate-x-1.5'
-                : activeReaction === 'tickle'
-                ? '-rotate-[15deg] translate-y-0.5'
-                : activeReaction === 'happy'
-                ? '-rotate-[38deg] -translate-y-2'
-                : activeReaction === 'curious'
-                ? 'rotate-[10deg]'
-                : isPresenting 
-                ? '-rotate-12 translate-y-1' 
-                : 'rotate-0'
-            }`}
+                : `transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] origin-[72px_155px] ${
+                    isCoveringEyes 
+                    ? 'rotate-[155deg] -translate-y-1' 
+                    : isCelebrating 
+                    ? '-rotate-[75deg] -translate-y-8 -translate-x-3' 
+                    : isError 
+                    ? 'rotate-[20deg] translate-y-1' 
+                    : activeReaction === 'surprised'
+                    ? '-rotate-[25deg] -translate-x-2'
+                    : activeReaction === 'shy'
+                    ? 'rotate-[16deg] translate-x-1.5'
+                    : activeReaction === 'tickle'
+                    ? '-rotate-[15deg] translate-y-0.5'
+                    : activeReaction === 'happy'
+                    ? '-rotate-[38deg] -translate-y-2'
+                    : activeReaction === 'curious'
+                    ? 'rotate-[10deg]'
+                    : isPresenting 
+                    ? '-rotate-12 translate-y-1' 
+                    : 'rotate-0'
+                  }`
+            }
           >
             {/* Shoulder joint */}
             <circle cx="72" cy="155" r="10" fill="url(#darkPlate)" stroke="#94A3B8" strokeWidth="1.5" />
@@ -945,31 +949,33 @@ export const ZapBotMascot: React.FC<ZapBotMascotProps> = ({
           {/* ================= RIGHT ARM (PRESENTING / INTERACTIVE) ================= */}
           <g 
             id="bot-right-shoulder"
-            className={`transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] origin-[168px_155px] ${
+            className={
               isAssembling
                 ? 'animate-assemble-arm-right'
-                : isCoveringEyes 
-                ? '-rotate-[155deg] -translate-y-1' 
-                : isCelebrating 
-                ? 'rotate-[75deg] -translate-y-8 translate-x-3' 
-                : isError 
-                ? '-rotate-[45deg] -translate-y-4' 
-                : activeReaction === 'surprised'
-                ? 'rotate-[25deg] translate-x-2'
-                : activeReaction === 'shy'
-                ? '-rotate-[16deg] -translate-x-1.5'
-                : activeReaction === 'tickle'
-                ? 'rotate-[15deg] translate-y-0.5'
-                : activeReaction === 'happy'
-                ? 'rotate-[38deg] -translate-y-2'
-                : activeReaction === 'curious'
-                ? '-rotate-[14deg]'
-                : isPresenting 
-                ? '-rotate-[55deg] translate-x-4 -translate-y-4' 
-                : isLookingAtForm 
-                ? '-rotate-[35deg] translate-x-2 -translate-y-2' 
-                : 'rotate-0'
-            }`}
+                : `transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] origin-[168px_155px] ${
+                    isCoveringEyes 
+                    ? '-rotate-[155deg] -translate-y-1' 
+                    : isCelebrating 
+                    ? 'rotate-[75deg] -translate-y-8 translate-x-3' 
+                    : isError 
+                    ? '-rotate-[45deg] -translate-y-4' 
+                    : activeReaction === 'surprised'
+                    ? 'rotate-[25deg] translate-x-2'
+                    : activeReaction === 'shy'
+                    ? '-rotate-[16deg] -translate-x-1.5'
+                    : activeReaction === 'tickle'
+                    ? 'rotate-[15deg] translate-y-0.5'
+                    : activeReaction === 'happy'
+                    ? 'rotate-[38deg] -translate-y-2'
+                    : activeReaction === 'curious'
+                    ? '-rotate-[14deg]'
+                    : isPresenting 
+                    ? '-rotate-[55deg] translate-x-4 -translate-y-4' 
+                    : isLookingAtForm 
+                    ? '-rotate-[35deg] translate-x-2 -translate-y-2' 
+                    : 'rotate-0'
+                  }`
+            }
           >
             {/* Shoulder joint */}
             <circle cx="168" cy="155" r="10" fill="url(#darkPlate)" stroke="#94A3B8" strokeWidth="1.5" />
