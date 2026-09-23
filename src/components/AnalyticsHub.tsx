@@ -22,6 +22,7 @@ import { CategoryDonutChart } from './CategoryDonutChart';
 import { BrandLogo } from './BrandLogo';
 import { MultiCurrencyTooltip } from './MultiCurrencyTooltip';
 import { BudgetLimitGauge } from './BudgetLimitGauge';
+import { MonthlySpendTrendChart } from './MonthlySpendTrendChart';
 import { getCountdownBadge, getDaysUntil } from '../utils/calculations';
 
 interface AnalyticsHubProps {
@@ -273,6 +274,13 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Monthly Spending Trend Line Chart (Last 6 Months Difference Analysis) */}
+      <MonthlySpendTrendChart
+        subscriptions={subscriptions}
+        simulatedCancelledIds={simulatedCancelledIds}
+        targetBudget={userProfile?.targetMonthlyBudget}
+      />
 
       {/* Main Grid: Category Donut Chart & Renewals within 7 Days */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 w-full min-w-0">

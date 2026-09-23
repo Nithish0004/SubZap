@@ -96,6 +96,30 @@ export interface FinancialMetrics {
   simulatedYearlyBleed: number;
 }
 
+export interface MonthlyBurnTrendPoint {
+  monthKey: string;
+  label: string;
+  fullLabel: string;
+  year: number;
+  totalBurn: number;
+  simulatedBurn: number;
+  diffFromPrev: number;
+  diffPercent: number;
+  activeCount: number;
+  cumulativeSavings: number;
+}
+
+export interface SpendingTrendSummary {
+  trend: MonthlyBurnTrendPoint[];
+  currentBurn: number;
+  sixMonthsAgoBurn: number;
+  netDelta: number;
+  netDeltaPercent: number;
+  averageBurn: number;
+  peakMonth: { label: string; amount: number };
+  lowestMonth: { label: string; amount: number };
+}
+
 export type AnalyticsMetrics = FinancialMetrics;
 
 export * from './catalog/types';

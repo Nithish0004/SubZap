@@ -22,11 +22,21 @@ function addDays(days: number): string {
 }
 
 /**
+ * Subtract days from current date (returns ISO string for historical createdAt)
+ */
+function subDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
+/**
  * Seed data designed to demonstrate all requirements immediately on first load:
  * - Varied billing cycles (Monthly vs Annual normalization)
  * - Free trial with countdown ("Expires in 2 days!")
  * - Renewals within 7 days
  * - Paused subscription for savings demonstration
+ * - Staggered creation history for 6-month monthly spend trend analysis
  */
 export const SEED_SUBSCRIPTIONS: Subscription[] = [
   {
@@ -42,7 +52,7 @@ export const SEED_SUBSCRIPTIONS: Subscription[] = [
     domain: 'audible.com',
     notes: '30-day trial will auto-charge ₹199.00 if not cancelled before 48 hours.',
     cancellationUrl: 'https://www.audible.com/account/cancel',
-    createdAt: new Date().toISOString(),
+    createdAt: subDays(4), // Started this month
   },
   {
     id: 'sub-seed-netflix',
@@ -56,7 +66,7 @@ export const SEED_SUBSCRIPTIONS: Subscription[] = [
     domain: 'netflix.com',
     notes: 'Family tier subscription. Consider downgrading to Standard plan.',
     cancellationUrl: 'https://www.netflix.com/youraccount',
-    createdAt: new Date().toISOString(),
+    createdAt: subDays(150), // 5 months ago
   },
   {
     id: 'sub-seed-adobe',
@@ -70,7 +80,7 @@ export const SEED_SUBSCRIPTIONS: Subscription[] = [
     domain: 'adobe.com',
     notes: 'Photoshop, Illustrator, Premiere Pro. Check annual commitment fee.',
     cancellationUrl: 'https://account.adobe.com/plans',
-    createdAt: new Date().toISOString(),
+    createdAt: subDays(90), // 3 months ago
   },
   {
     id: 'sub-seed-notion',
@@ -84,7 +94,7 @@ export const SEED_SUBSCRIPTIONS: Subscription[] = [
     domain: 'notion.so',
     notes: 'Billed annually (₹800.00/month normalized burn). Workspace knowledge base.',
     cancellationUrl: 'https://www.notion.so/settings',
-    createdAt: new Date().toISOString(),
+    createdAt: subDays(60), // 2 months ago
   },
   {
     id: 'sub-seed-equinox',
@@ -98,7 +108,7 @@ export const SEED_SUBSCRIPTIONS: Subscription[] = [
     domain: 'cult.fit',
     notes: 'All-center access membership. Major candidate for monthly burn reduction.',
     cancellationUrl: 'https://www.cult.fit',
-    createdAt: new Date().toISOString(),
+    createdAt: subDays(120), // 4 months ago
   },
   {
     id: 'sub-seed-spotify',
@@ -112,7 +122,7 @@ export const SEED_SUBSCRIPTIONS: Subscription[] = [
     domain: 'spotify.com',
     notes: 'Paused temporarily while testing Apple Music bundle.',
     cancellationUrl: 'https://www.spotify.com/account/cancel',
-    createdAt: new Date().toISOString(),
+    createdAt: subDays(45), // 1.5 months ago
   },
 ];
 
