@@ -31,3 +31,7 @@ SubZap is currently under active development, with the focus on building a polis
 ## Vision
 
 The goal of SubZap is to go beyond simply tracking subscriptions by helping users understand their recurring expenses and make better decisions about the services they pay for.
+
+## Latest Update
+
+Improved project documentation and updated information about SubZap development.
