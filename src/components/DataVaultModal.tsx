@@ -15,11 +15,20 @@ import {
   User,
   CreditCard,
   Layers,
-  Sparkles
+  Sparkles,
+  Download,
+  FileSpreadsheet,
+  FileCheck,
+  ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { Subscription } from '../types';
+import { 
+  generateSubscriptionsCSV, 
+  generateEncryptedVaultBackup, 
+  triggerDownload 
+} from '../utils/export';
 
 interface DataVaultModalProps {
   isOpen: boolean;
@@ -39,7 +48,9 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
   const [showRawKey, setShowRawKey] = useState(false);
-  const [activeView, setActiveView] = useState<'profile' | 'subscriptions' | 'raw' | 'security'>('profile');
+  const [activeView, setActiveView] = useState<'profile' | 'subscriptions' | 'export' | 'security' | 'raw'>('profile');
+  const [isExporting, setIsExporting] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -64,6 +75,74 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
     navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
     setCopiedJson(true);
     setTimeout(() => setCopiedJson(false), 2000);
+  };
+
+  // Download CSV Spreadsheet for personal record-keeping
+  const handleDownloadCSV = () => {
+    try {
+      const dateSlug = new Date().toISOString().split('T')[0];
+      const csv = generateSubscriptionsCSV(subscriptions);
+      triggerDownload(csv, `subzap_subscriptions_${dateSlug}.csv`, 'text/csv');
+      setDownloadStatus('CSV file downloaded');
+      setTimeout(() => setDownloadStatus(null), 3500);
+    } catch (err) {
+      console.error('Error downloading CSV:', err);
+    }
+  };
+
+  // Download Zero-Knowledge AES-256 Encrypted Vault File
+  const handleDownloadEncrypted = async () => {
+    setIsExporting(true);
+    try {
+      const dateSlug = new Date().toISOString().split('T')[0];
+      const encryptedJson = await generateEncryptedVaultBackup(
+        subscriptions,
+        userSecretKey,
+        {
+          userId: user?.uid,
+          userEmail: user?.email || user?.phoneNumber,
+          profile: userProfile,
+        }
+      );
+      triggerDownload(
+        encryptedJson,
+        `subzap_vault_encrypted_${dateSlug}.json`,
+        'application/json'
+      );
+      setDownloadStatus('Encrypted vault backup downloaded');
+      setTimeout(() => setDownloadStatus(null), 3500);
+    } catch (err) {
+      console.error('Error generating encrypted vault backup:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Download Plain Raw JSON file
+  const handleDownloadPlainJSON = () => {
+    try {
+      const dateSlug = new Date().toISOString().split('T')[0];
+      const exportData = {
+        format: 'subzap-personal-record-snapshot-v1',
+        exportedAt: new Date().toISOString(),
+        user: {
+          uid: user?.uid,
+          email: user?.email || user?.phoneNumber,
+        },
+        profile: userProfile,
+        totalSubscriptions: subscriptions.length,
+        subscriptions,
+      };
+      triggerDownload(
+        JSON.stringify(exportData, null, 2),
+        `subzap_data_${dateSlug}.json`,
+        'application/json'
+      );
+      setDownloadStatus('Raw JSON snapshot downloaded');
+      setTimeout(() => setDownloadStatus(null), 3500);
+    } catch (err) {
+      console.error('Error downloading JSON:', err);
+    }
   };
 
   return (
@@ -97,19 +176,64 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Quick Download Header Buttons */}
+            <div className="hidden sm:flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700/80">
+              <button
+                id="header-download-csv-btn"
+                type="button"
+                onClick={handleDownloadCSV}
+                title="Download subscriptions as CSV spreadsheet"
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>CSV</span>
+              </button>
+
+              <button
+                id="header-download-enc-btn"
+                type="button"
+                onClick={handleDownloadEncrypted}
+                disabled={isExporting}
+                title="Download AES-256 encrypted vault backup"
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-white dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Lock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>{isExporting ? 'Encrypting...' : 'Encrypted'}</span>
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Download Status Toast Banner */}
+        {downloadStatus && (
+          <div className="px-4 sm:px-6 py-2 bg-emerald-500 text-white text-xs font-semibold flex items-center justify-between animate-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4" />
+              <span>{downloadStatus}</span>
+            </div>
+            <button
+              onClick={() => setDownloadStatus(null)}
+              className="text-emerald-100 hover:text-white p-0.5 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Navigation Tabs */}
         <div className="flex items-center px-4 sm:px-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/40 gap-2 overflow-x-auto text-xs font-semibold">
           <button
             onClick={() => setActiveView('profile')}
-            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
               activeView === 'profile'
                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -121,7 +245,7 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
 
           <button
             onClick={() => setActiveView('subscriptions')}
-            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
               activeView === 'subscriptions'
                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -132,8 +256,21 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
           </button>
 
           <button
+            id="tab-export-btn"
+            onClick={() => setActiveView('export')}
+            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+              activeView === 'export'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <Download className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Download & Export</span>
+          </button>
+
+          <button
             onClick={() => setActiveView('security')}
-            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
               activeView === 'security'
                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -145,7 +282,7 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
 
           <button
             onClick={() => setActiveView('raw')}
-            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
               activeView === 'raw'
                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -174,7 +311,7 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                       onClose();
                       setNeedsOnboarding(true);
                     }}
-                    className="flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    className="flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                   >
                     <Sparkles className="w-3 h-3" />
                     <span>Edit Profile Data</span>
@@ -241,6 +378,44 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
           {/* TAB 2: SUBSCRIPTIONS DATA */}
           {activeView === 'subscriptions' && (
             <div className="space-y-4">
+              {/* Personal Record-Keeping Export Banner */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-slate-50 via-indigo-50/30 to-slate-50 dark:from-slate-800/80 dark:via-indigo-950/30 dark:to-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400">
+                    <Download className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-900 dark:text-white">
+                      Download Personal Records
+                    </h5>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Save your {subscriptions.length} subscription records as a spreadsheet or encrypted vault file
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    id="subs-download-csv-btn"
+                    onClick={handleDownloadCSV}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Download CSV</span>
+                  </button>
+
+                  <button
+                    id="subs-download-enc-btn"
+                    onClick={handleDownloadEncrypted}
+                    disabled={isExporting}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>{isExporting ? 'Encrypting...' : 'Download Encrypted'}</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                   Active Subscription Records ({subscriptions.length})
@@ -277,7 +452,7 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
 
                       <div className="text-right">
                         <p className="font-mono font-bold text-slate-900 dark:text-white">
-                          {formatBaseINR(sub.priceINR)}
+                          {formatBaseINR(sub.cost)}
                           <span className="text-[10px] font-normal text-slate-400">/{sub.billingCycle === 'yearly' ? 'yr' : 'mo'}</span>
                         </p>
                         <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-semibold ${
@@ -293,7 +468,119 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: CLOUD DATABASE & SECURITY */}
+          {/* TAB 3: DEDICATED DOWNLOAD & EXPORT PANEL */}
+          {activeView === 'export' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-50/80 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900/60 border border-indigo-200/90 dark:border-indigo-800/60">
+                <div className="flex items-center gap-2 mb-1">
+                  <Download className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Personal Record-Keeping & Offline Vault Export
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Export your active subscriptions in open spreadsheet formats or zero-knowledge encrypted packages for offline archival, tax records, or backup.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Option 1: CSV File Download */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                        <FileSpreadsheet className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-slate-900 dark:text-white">
+                          CSV Spreadsheet File
+                        </h5>
+                        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                          .csv (UTF-8 with BOM)
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      Standard tabular export formatted for Microsoft Excel, Google Sheets, Apple Numbers, or Notion. Includes 15 columns with names, prices, categories, renewal dates, and status.
+                    </p>
+
+                    <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                      <span>Includes: </span>
+                      <strong className="text-slate-800 dark:text-slate-200 font-semibold">{subscriptions.length} items</strong>
+                      <span> • Cost in INR • Cycle • Renewal Dates • URLs</span>
+                    </div>
+                  </div>
+
+                  <button
+                    id="export-panel-download-csv-btn"
+                    onClick={handleDownloadCSV}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Subscriptions as CSV</span>
+                  </button>
+                </div>
+
+                {/* Option 2: Encrypted Vault File Download */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                        <Lock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-slate-900 dark:text-white">
+                          Encrypted Vault Backup
+                        </h5>
+                        <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                          .json (AES-GCM-256)
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      Zero-knowledge ciphertext export generated using your 256-bit PBKDF2 session key. Safe for cold storage, cloud drive backup, or USB personal archives.
+                    </p>
+
+                    <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                      <span>Security: </span>
+                      <strong className="text-indigo-600 dark:text-indigo-400 font-semibold">AES-256 Client-Side</strong>
+                      <span> • Unreadable without Key</span>
+                    </div>
+                  </div>
+
+                  <button
+                    id="export-panel-download-enc-btn"
+                    onClick={handleDownloadEncrypted}
+                    disabled={isExporting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span>{isExporting ? 'Encrypting Vault...' : 'Download Encrypted File (.json)'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Developer / Raw JSON backup option */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-slate-400" />
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Need a raw developer snapshot with full schemas and timestamps?
+                  </span>
+                </div>
+                <button
+                  onClick={handleDownloadPlainJSON}
+                  className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 font-semibold transition-colors cursor-pointer shrink-0"
+                >
+                  Download Plain JSON
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: CLOUD DATABASE & SECURITY */}
           {activeView === 'security' && (
             <div className="space-y-4 text-xs">
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-3">
@@ -362,20 +649,30 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
             </div>
           )}
 
-          {/* TAB 4: RAW JSON EXPORT */}
+          {/* TAB 5: RAW JSON EXPORT */}
           {activeView === 'raw' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
                   Decrypted JSON Snapshot
                 </h4>
-                <button
-                  onClick={handleCopyJson}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  {copiedJson ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedJson ? 'Copied to Clipboard!' : 'Copy Full JSON'}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleDownloadPlainJSON}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download .JSON</span>
+                  </button>
+
+                  <button
+                    onClick={handleCopyJson}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                  >
+                    {copiedJson ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedJson ? 'Copied to Clipboard!' : 'Copy Full JSON'}</span>
+                  </button>
+                </div>
               </div>
 
               <pre className="p-4 rounded-xl bg-slate-900 text-slate-100 font-mono text-[11px] overflow-x-auto max-h-[360px] leading-relaxed border border-slate-800">
@@ -390,20 +687,44 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/60 text-xs">
+        <div className="flex flex-wrap items-center justify-between px-4 sm:px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/60 text-xs gap-2">
           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
             <Lock className="w-3.5 h-3.5 text-emerald-500" />
             <span>End-to-End Encrypted Persistence</span>
           </div>
 
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold cursor-pointer transition-colors"
-          >
-            Close Vault
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              id="footer-download-csv-btn"
+              type="button"
+              onClick={handleDownloadCSV}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 font-semibold cursor-pointer transition-colors"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Download CSV</span>
+            </button>
+
+            <button
+              id="footer-download-enc-btn"
+              type="button"
+              onClick={handleDownloadEncrypted}
+              disabled={isExporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 font-semibold cursor-pointer transition-colors disabled:opacity-50"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>{isExporting ? 'Encrypting...' : 'Download Encrypted'}</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold cursor-pointer transition-colors"
+            >
+              Close Vault
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 };
+

@@ -132,6 +132,7 @@ export async function encryptSubscription(
   const [
     nameEnc,
     costEnc,
+    previousCostEnc,
     nextRenewalDateEnc,
     trialExpiryDateEnc,
     notesEnc,
@@ -139,6 +140,7 @@ export async function encryptSubscription(
   ] = await Promise.all([
     encryptField(sub.name, secretKey),
     encryptField(String(sub.cost), secretKey),
+    sub.previousCost !== undefined ? encryptField(String(sub.previousCost), secretKey) : Promise.resolve(undefined),
     encryptField(sub.nextRenewalDate, secretKey),
     sub.trialExpiryDate ? encryptField(sub.trialExpiryDate, secretKey) : Promise.resolve(undefined),
     sub.notes ? encryptField(sub.notes, secretKey) : Promise.resolve(undefined),
@@ -150,6 +152,8 @@ export async function encryptSubscription(
     userId,
     nameEnc,
     costEnc,
+    previousCostEnc,
+    priceAlertDismissed: sub.priceAlertDismissed,
     nextRenewalDateEnc,
     trialExpiryDateEnc,
     notesEnc,
@@ -177,6 +181,7 @@ export async function decryptSubscription(
   const [
     decryptedName,
     decryptedCostStr,
+    decryptedPreviousCostStr,
     decryptedRenewalDate,
     decryptedTrialExpiry,
     decryptedNotes,
@@ -184,6 +189,7 @@ export async function decryptSubscription(
   ] = await Promise.all([
     decryptField(record.nameEnc, secretKey),
     decryptField(record.costEnc, secretKey),
+    record.previousCostEnc ? decryptField(record.previousCostEnc, secretKey) : Promise.resolve(undefined),
     decryptField(record.nextRenewalDateEnc, secretKey),
     record.trialExpiryDateEnc ? decryptField(record.trialExpiryDateEnc, secretKey) : Promise.resolve(undefined),
     record.notesEnc ? decryptField(record.notesEnc, secretKey) : Promise.resolve(undefined),
@@ -191,11 +197,14 @@ export async function decryptSubscription(
   ]);
 
   const parsedCost = parseFloat(decryptedCostStr);
+  const parsedPreviousCost = decryptedPreviousCostStr ? parseFloat(decryptedPreviousCostStr) : undefined;
 
   return {
     id: record.id,
     name: decryptedName || 'Encrypted Subscription',
     cost: isNaN(parsedCost) ? 0 : parsedCost,
+    previousCost: (parsedPreviousCost !== undefined && !isNaN(parsedPreviousCost)) ? parsedPreviousCost : undefined,
+    priceAlertDismissed: Boolean(record.priceAlertDismissed),
     currency: record.currency || '₹',
     billingCycle: record.billingCycle || 'monthly',
     category: record.category || 'Other',

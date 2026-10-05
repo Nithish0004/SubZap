@@ -4,7 +4,11 @@ import {
   getStoredSubscriptions, 
   saveStoredSubscriptions, 
   resetToDefaults,
-  SEED_SUBSCRIPTIONS 
+  SEED_SUBSCRIPTIONS,
+  getSmartAlertThreshold,
+  setSmartAlertThreshold,
+  getSmartAlertEnabled,
+  setSmartAlertEnabled
 } from './utils/storage';
 import { calculateFinancialMetrics } from './utils/calculations';
 import { 
@@ -55,6 +59,8 @@ export default function App() {
   // Web Notification & In-app alerts state
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [alerts, setAlerts] = useState<InAppNotification[]>([]);
+  const [smartAlertThreshold, setSmartAlertThresholdState] = useState<number>(() => getSmartAlertThreshold());
+  const [smartAlertEnabled, setSmartAlertEnabledState] = useState<boolean>(() => getSmartAlertEnabled());
 
   // Auth gatekeeper and transition states
   const isAuthedAndVerified = Boolean(user && user.emailVerified);
@@ -140,12 +146,95 @@ export default function App() {
     };
   }, [user, userSecretKey]);
 
-  // Initial notification check & permission sync
+  // Initial notification check & permission sync (runs reactively on subscriptions, threshold, or toggle)
   useEffect(() => {
     setNotificationPermission(getNotificationPermission());
-    const { alerts: initialAlerts } = checkUpcomingRenewalsAndNotify(subscriptions);
+    const { alerts: initialAlerts } = checkUpcomingRenewalsAndNotify(
+      subscriptions,
+      smartAlertThreshold,
+      smartAlertEnabled
+    );
     setAlerts(initialAlerts);
-  }, [subscriptions]);
+  }, [subscriptions, smartAlertThreshold, smartAlertEnabled]);
+
+  // Handler: Change Smart Alert Threshold
+  const handleThresholdChange = (newThreshold: number) => {
+    setSmartAlertThresholdState(newThreshold);
+    setSmartAlertThreshold(newThreshold);
+  };
+
+  // Handler: Toggle Smart Alert Enabled
+  const handleToggleSmartAlertEnabled = (enabled: boolean) => {
+    setSmartAlertEnabledState(enabled);
+    setSmartAlertEnabled(enabled);
+  };
+
+  // Handler: Dismiss Smart Price Alert
+  const handleDismissAlert = async (subscriptionId: string) => {
+    const nextList = subscriptions.map((s) =>
+      s.id === subscriptionId ? { ...s, priceAlertDismissed: true, updatedAt: new Date().toISOString() } : s
+    );
+    setSubscriptions(nextList);
+    saveStoredSubscriptions(nextList, user?.uid);
+    const sub = nextList.find((s) => s.id === subscriptionId);
+    if (user && sub) {
+      await saveUserSubscriptionToCloud(user.uid, userSecretKey, sub);
+    }
+  };
+
+  // Handler: Revert Price to Previous Cost
+  const handleRevertPrice = async (subscriptionId: string) => {
+    const sub = subscriptions.find((s) => s.id === subscriptionId);
+    if (!sub || sub.previousCost === undefined) return;
+
+    const reverted: Subscription = {
+      ...sub,
+      cost: sub.previousCost,
+      previousCost: undefined,
+      priceAlertDismissed: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const nextList = subscriptions.map((s) => (s.id === subscriptionId ? reverted : s));
+    setSubscriptions(nextList);
+    saveStoredSubscriptions(nextList, user?.uid);
+    if (user) {
+      await saveUserSubscriptionToCloud(user.uid, userSecretKey, reverted);
+    }
+  };
+
+  // Handler: Simulate an unexpected price hike on a subscription for instant testing
+  const handleSimulatePriceIncrease = async () => {
+    // Look for Netflix first or another active sub
+    let target = subscriptions.find((s) => s.id === 'sub-seed-netflix' && (s.previousCost === undefined || s.priceAlertDismissed));
+    if (!target) {
+      target = subscriptions.find((s) => !s.isPaused && (s.previousCost === undefined || s.priceAlertDismissed));
+    }
+    if (!target) {
+      target = subscriptions[0];
+    }
+    if (!target) return;
+
+    const previousCost = target.cost;
+    const hikeAmount = Math.round(previousCost * 0.25); // +25% hike
+    const newCost = previousCost + Math.max(hikeAmount, 150);
+
+    const updated: Subscription = {
+      ...target,
+      previousCost,
+      cost: newCost,
+      priceAlertDismissed: false,
+      updatedAt: new Date().toISOString(),
+      notes: `${target.notes ? target.notes + ' ' : ''}[Simulated Price Spike: +${Math.round(((newCost - previousCost) / previousCost) * 100)}%]`,
+    };
+
+    const nextList = subscriptions.map((s) => (s.id === target.id ? updated : s));
+    setSubscriptions(nextList);
+    saveStoredSubscriptions(nextList, user?.uid);
+    if (user) {
+      await saveUserSubscriptionToCloud(user.uid, userSecretKey, updated);
+    }
+  };
 
   // Reactive financial metrics calculation
   const metrics = useMemo(() => {
@@ -170,10 +259,13 @@ export default function App() {
 
     if (id) {
       const existing = subscriptions.find((s) => s.id === id);
+      const isPriceIncrease = Boolean(existing && data.cost > existing.cost);
       targetSub = {
         ...(existing || {}),
         ...data,
         id,
+        previousCost: isPriceIncrease ? existing!.cost : (data.previousCost ?? existing?.previousCost),
+        priceAlertDismissed: isPriceIncrease ? false : existing?.priceAlertDismissed,
         createdAt: existing?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       } as Subscription;
@@ -413,6 +505,13 @@ export default function App() {
         alerts={alerts}
         subscriptions={subscriptions}
         onTogglePause={handleTogglePause}
+        smartAlertThreshold={smartAlertThreshold}
+        onThresholdChange={handleThresholdChange}
+        smartAlertEnabled={smartAlertEnabled}
+        onToggleSmartAlertEnabled={handleToggleSmartAlertEnabled}
+        onDismissAlert={handleDismissAlert}
+        onRevertPrice={handleRevertPrice}
+        onSimulatePriceIncrease={handleSimulatePriceIncrease}
       />
 
       {/* Project Data & Cloud Vault Inspector Modal */}

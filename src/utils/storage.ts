@@ -30,6 +30,52 @@ function subDays(days: number): string {
   return d.toISOString();
 }
 
+export const DEFAULT_SMART_ALERT_THRESHOLD = 10; // Default 10% price surge threshold
+
+const SMART_ALERT_THRESHOLD_KEY = 'subzap_smart_alert_threshold_v1';
+const SMART_ALERT_ENABLED_KEY = 'subzap_smart_alert_enabled_v1';
+
+export function getSmartAlertThreshold(): number {
+  try {
+    const raw = localStorage.getItem(SMART_ALERT_THRESHOLD_KEY);
+    if (raw !== null) {
+      const parsed = parseFloat(raw);
+      if (!isNaN(parsed) && parsed >= 0) return parsed;
+    }
+  } catch (err) {
+    console.warn('Failed reading smart alert threshold from localStorage:', err);
+  }
+  return DEFAULT_SMART_ALERT_THRESHOLD;
+}
+
+export function setSmartAlertThreshold(val: number): void {
+  try {
+    localStorage.setItem(SMART_ALERT_THRESHOLD_KEY, String(val));
+  } catch (err) {
+    console.error('Failed storing smart alert threshold:', err);
+  }
+}
+
+export function getSmartAlertEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(SMART_ALERT_ENABLED_KEY);
+    if (raw !== null) {
+      return raw === 'true';
+    }
+  } catch (err) {
+    console.warn('Failed reading smart alert enabled state:', err);
+  }
+  return true;
+}
+
+export function setSmartAlertEnabled(val: boolean): void {
+  try {
+    localStorage.setItem(SMART_ALERT_ENABLED_KEY, String(val));
+  } catch (err) {
+    console.error('Failed storing smart alert enabled state:', err);
+  }
+}
+
 /**
  * Seed data designed to demonstrate all requirements immediately on first load:
  * - Varied billing cycles (Monthly vs Annual normalization)
@@ -37,6 +83,7 @@ function subDays(days: number): string {
  * - Renewals within 7 days
  * - Paused subscription for savings demonstration
  * - Staggered creation history for 6-month monthly spend trend analysis
+ * - Smart Alert demonstration: unexpected price increase from ₹499 to ₹649 (+30.1%)
  */
 export const SEED_SUBSCRIPTIONS: Subscription[] = [
   {
@@ -58,13 +105,14 @@ export const SEED_SUBSCRIPTIONS: Subscription[] = [
     id: 'sub-seed-netflix',
     name: 'Netflix 4K Ultra',
     cost: 649.00,
+    previousCost: 499.00, // Price surged from ₹499 to ₹649 (+30.1% increase between billing cycles)
     currency: '₹',
     billingCycle: 'monthly',
     category: 'Entertainment',
     nextRenewalDate: addDays(3), // Renews in 3 days!
     isPaused: false,
     domain: 'netflix.com',
-    notes: 'Family tier subscription. Consider downgrading to Standard plan.',
+    notes: 'Family tier subscription. Unexpectedly hiked by ₹150 (+30.1%) between billing cycles.',
     cancellationUrl: 'https://www.netflix.com/youraccount',
     createdAt: subDays(150), // 5 months ago
   },
@@ -144,14 +192,19 @@ export function getStoredSubscriptions(userId?: string): Subscription[] {
     if (Array.isArray(parsed) && parsed.length > 0) {
       // Migrate old seed or USD entries if currency was '$'
       const migrated = parsed.map((sub: Subscription) => {
-        if (sub.currency === '$') {
-          return {
-            ...sub,
-            cost: Math.round(sub.cost * 86.5),
+        let updated = { ...sub };
+        if (updated.currency === '$') {
+          updated = {
+            ...updated,
+            cost: Math.round(updated.cost * 86.5),
             currency: '₹',
           };
         }
-        return sub;
+        // Ensure demonstration seed for unexpected price increase is populated
+        if (updated.id === 'sub-seed-netflix' && updated.previousCost === undefined) {
+          updated.previousCost = 499.00;
+        }
+        return updated;
       });
       return migrated;
     }

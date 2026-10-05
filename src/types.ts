@@ -43,6 +43,9 @@ export interface Subscription {
   cancellationUrl?: string;
   domain?: string;
   logoUrl?: string;
+  previousCost?: number; // Cost prior to latest increase/billing cycle
+  priceAlertDismissed?: boolean;
+  priceHistory?: Array<{ date: string; cost: number; currency: string; reason?: string }>;
   createdAt: string;
   updatedAt?: string;
 }
@@ -57,6 +60,8 @@ export interface EncryptedSubscriptionRecord {
   userId: string;
   nameEnc: string;
   costEnc: string;
+  previousCostEnc?: string;
+  priceAlertDismissed?: boolean;
   nextRenewalDateEnc: string;
   trialExpiryDateEnc?: string;
   notesEnc?: string;

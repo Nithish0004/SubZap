@@ -1006,6 +1006,28 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 </div>
               )}
 
+              {/* Smart Alert Price Increase Notice */}
+              {initialData && parsedCost > initialData.cost && (
+                <div className="p-3 rounded-xl bg-gradient-to-r from-rose-50 to-amber-50 dark:from-rose-950/40 dark:to-amber-950/20 border border-rose-300 dark:border-rose-800 text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 rounded-md bg-rose-600 text-white shrink-0">
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </span>
+                    <div>
+                      <span className="font-bold text-rose-700 dark:text-rose-300">
+                        ⚡ Smart Alert: Price Surge Detected
+                      </span>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                        Price rising from {currency}{initialData.cost} to {currency}{parsedCost} (+{(((parsedCost - initialData.cost) / initialData.cost) * 100).toFixed(1)}%).
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-100 dark:bg-rose-900 text-rose-700 dark:text-rose-200 border border-rose-200 dark:border-rose-700 shrink-0">
+                    Triggers Smart Alert
+                  </span>
+                </div>
+              )}
+
               {/* Category & Next Renewal Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
