@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Database, 
   ShieldCheck, 
@@ -19,14 +19,37 @@ import {
   Download,
   FileSpreadsheet,
   FileCheck,
-  ShieldAlert
+  ShieldAlert,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  ArrowUpRight,
+  ArrowDownRight,
+  Sliders,
+  BarChart3
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ReferenceLine,
+  Cell,
+} from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useTheme } from '../context/ThemeContext';
 import { Subscription } from '../types';
+import { calculateMonthlySpendingTrend } from '../utils/calculations';
 import { 
   generateSubscriptionsCSV, 
   generateEncryptedVaultBackup, 
+  generateSpendingTrendCSV,
   triggerDownload 
 } from '../utils/export';
 
@@ -44,13 +67,93 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
   onTriggerSync,
 }) => {
   const { user, userProfile, userSecretKey, setNeedsOnboarding } = useAuth();
-  const { formatBaseINR } = useCurrency();
+  const { formatBaseINR, getBreakdown } = useCurrency();
+  const { theme } = useTheme();
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
   const [showRawKey, setShowRawKey] = useState(false);
-  const [activeView, setActiveView] = useState<'profile' | 'subscriptions' | 'export' | 'security' | 'raw'>('profile');
+  const [activeView, setActiveView] = useState<'profile' | 'subscriptions' | 'trends' | 'export' | 'security' | 'raw'>('profile');
+  const [trendChartMode, setTrendChartMode] = useState<'area' | 'bar'>('area');
   const [isExporting, setIsExporting] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
+
+  // Compute 6-month historical spending trends using saved subscription data
+  const trendSummary = useMemo(() => {
+    return calculateMonthlySpendingTrend(subscriptions);
+  }, [subscriptions]);
+
+  const { trend, currentBurn, sixMonthsAgoBurn, netDelta, netDeltaPercent, averageBurn, peakMonth, lowestMonth } = trendSummary;
+  const targetBudget = userProfile?.targetMonthlyBudget || 5000;
+  const isIncrease = netDelta > 0;
+  const isDecrease = netDelta < 0;
+  const isOverBudget = currentBurn > targetBudget;
+  const budgetVariance = currentBurn - targetBudget;
+
+  const chartData = useMemo(() => {
+    return trend.map((point) => ({
+      name: point.label,
+      fullLabel: point.fullLabel,
+      burn: point.totalBurn,
+      diff: point.diffFromPrev,
+      diffPercent: point.diffPercent,
+      activeCount: point.activeCount,
+    }));
+  }, [trend]);
+
+  const formatYAxis = (val: number) => {
+    if (val === 0) return '₹0';
+    if (val >= 1000) {
+      return `₹${(val / 1000).toFixed(val % 1000 === 0 ? 0 : 1)}k`;
+    }
+    return `₹${val}`;
+  };
+
+  // Custom Recharts Tooltip for Vault Spending Trends
+  const VaultTrendTooltip = ({ active, payload }: any) => {
+    if (!active || !payload || !payload.length) return null;
+    const data = payload[0].payload;
+    const isMoMUp = data.diff > 0;
+    const isMoMDown = data.diff < 0;
+
+    return (
+      <div className="p-3.5 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-md text-xs min-w-[210px] space-y-2 pointer-events-none z-50">
+        <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white">
+            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+            <span>{data.fullLabel}</span>
+          </div>
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+            {data.activeCount} subs
+          </span>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between">
+            <span className="text-slate-500 dark:text-slate-400">Monthly Burn:</span>
+            <span className="font-mono font-extrabold text-slate-900 dark:text-white text-sm">
+              {formatBaseINR(data.burn)}
+            </span>
+          </div>
+
+          <div className="flex items-baseline justify-between text-[11px] font-mono text-slate-400">
+            <span>USD Equivalent:</span>
+            <span>≈ {getBreakdown(data.burn).usd}</span>
+          </div>
+
+          {data.diff !== 0 && (
+            <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-slate-500 dark:text-slate-400">MoM Variance:</span>
+              <span className={`font-mono font-bold flex items-center gap-0.5 ${
+                isMoMUp ? 'text-rose-600 dark:text-rose-400' : isMoMDown ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
+              }`}>
+                {isMoMUp ? '+' : ''}{formatBaseINR(data.diff)} ({data.diffPercent > 0 ? '+' : ''}{data.diffPercent}%)
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -87,6 +190,19 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
       setTimeout(() => setDownloadStatus(null), 3500);
     } catch (err) {
       console.error('Error downloading CSV:', err);
+    }
+  };
+
+  // Download Spending Trends CSV for historical trend analysis
+  const handleDownloadTrendCSV = () => {
+    try {
+      const dateSlug = new Date().toISOString().split('T')[0];
+      const csv = generateSpendingTrendCSV(trend);
+      triggerDownload(csv, `subzap_spending_trends_${dateSlug}.csv`, 'text/csv');
+      setDownloadStatus('Spending trends CSV downloaded');
+      setTimeout(() => setDownloadStatus(null), 3500);
+    } catch (err) {
+      console.error('Error downloading trend CSV:', err);
     }
   };
 
@@ -256,6 +372,19 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
           </button>
 
           <button
+            id="tab-trends-btn"
+            onClick={() => setActiveView('trends')}
+            className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+              activeView === 'trends'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Spending Trends (Recharts)</span>
+          </button>
+
+          <button
             id="tab-export-btn"
             onClick={() => setActiveView('export')}
             className={`flex items-center gap-1.5 py-3 px-3 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
@@ -396,6 +525,15 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
 
                 <div className="flex items-center gap-2">
                   <button
+                    id="subs-view-trends-btn"
+                    onClick={() => setActiveView('trends')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>View Trends</span>
+                  </button>
+
+                  <button
                     id="subs-download-csv-btn"
                     onClick={handleDownloadCSV}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
@@ -468,7 +606,310 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: DEDICATED DOWNLOAD & EXPORT PANEL */}
+          {/* TAB 3: SPENDING TRENDS OVER TIME (RECHARTS) */}
+          {activeView === 'trends' && (
+            <div className="space-y-5 animate-in fade-in-50 duration-150">
+              {/* Header & Controls Banner */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-50/90 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900/60 border border-indigo-200/90 dark:border-indigo-800/60 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      6-Month Spending Trends & Burn Trajectory
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Interactive Recharts visualization modeled from your saved subscription database records and billing intervals.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Chart Type Selector */}
+                  <div className="flex items-center bg-white dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+                    <button
+                      id="trend-chart-area-btn"
+                      type="button"
+                      onClick={() => setTrendChartMode('area')}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
+                        trendChartMode === 'area'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title="Area Chart trajectory view"
+                    >
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>Area Curve</span>
+                    </button>
+                    <button
+                      id="trend-chart-bar-btn"
+                      type="button"
+                      onClick={() => setTrendChartMode('bar')}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
+                        trendChartMode === 'bar'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title="Bar Chart comparison view"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span>Bar View</span>
+                    </button>
+                  </div>
+
+                  {/* Quick Export Trend CSV Button */}
+                  <button
+                    id="trend-export-csv-btn"
+                    type="button"
+                    onClick={handleDownloadTrendCSV}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    title="Download 6-month spending trends as CSV"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Export CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Key Spending Trend Metrics KPI Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                {/* 1. Current Monthly Burn */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">Current Monthly Burn</span>
+                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      isIncrease 
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300' 
+                        : isDecrease 
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300'
+                        : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}>
+                      {isIncrease ? <ArrowUpRight className="w-3 h-3" /> : isDecrease ? <ArrowDownRight className="w-3 h-3" /> : null}
+                      {netDeltaPercent > 0 ? `+${netDeltaPercent}%` : `${netDeltaPercent}%`}
+                    </span>
+                  </div>
+                  <p className="font-mono font-extrabold text-slate-900 dark:text-white text-base">
+                    {formatBaseINR(currentBurn)}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {isIncrease ? `+${formatBaseINR(netDelta)} vs 6 mo ago` : isDecrease ? `${formatBaseINR(netDelta)} vs 6 mo ago` : 'Steady trajectory'}
+                  </p>
+                </div>
+
+                {/* 2. 6-Month Average Burn */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">6-Mo Average Burn</span>
+                  <p className="font-mono font-extrabold text-slate-900 dark:text-white text-base">
+                    {formatBaseINR(averageBurn)}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    Across 6 billing cycles
+                  </p>
+                </div>
+
+                {/* 3. Budget Variance */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">Monthly Target Budget</span>
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      isOverBudget 
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300' 
+                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300'
+                    }`}>
+                      {isOverBudget ? 'Over Budget' : 'Within Budget'}
+                    </span>
+                  </div>
+                  <p className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400 text-base">
+                    {formatBaseINR(targetBudget)}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-mono">
+                    {isOverBudget ? `+${formatBaseINR(budgetVariance)} over limit` : `${formatBaseINR(Math.abs(budgetVariance))} buffer left`}
+                  </p>
+                </div>
+
+                {/* 4. Peak vs Lowest Month */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px] font-medium">Peak vs Lowest Cycle</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 text-[10px]">Peak:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">{peakMonth.label} ({formatBaseINR(peakMonth.totalBurn)})</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs border-t border-slate-200/50 dark:border-slate-700/50 pt-1">
+                    <span className="text-slate-500 text-[10px]">Lowest:</span>
+                    <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">{lowestMonth.label} ({formatBaseINR(lowestMonth.totalBurn)})</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Recharts Graph Panel */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Monthly Recurring Outflow (INR)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-3 h-0.5 bg-indigo-500 inline-block" />
+                      <span>Monthly Burn</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-3 h-0.5 bg-rose-500 border-b border-dashed border-rose-500 inline-block" />
+                      <span>Target Budget ({formatBaseINR(targetBudget)})</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-64 sm:h-72 w-full pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    {trendChartMode === 'area' ? (
+                      <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="vaultTrendGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} opacity={0.6} />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} 
+                          fontSize={11} 
+                          tickLine={false} 
+                          axisLine={{ stroke: theme === 'dark' ? '#334155' : '#e2e8f0' }} 
+                        />
+                        <YAxis 
+                          stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} 
+                          fontSize={10} 
+                          tickFormatter={formatYAxis} 
+                          tickLine={false} 
+                          axisLine={{ stroke: theme === 'dark' ? '#334155' : '#e2e8f0' }} 
+                        />
+                        <RechartsTooltip content={<VaultTrendTooltip />} />
+                        <ReferenceLine 
+                          y={targetBudget} 
+                          stroke="#f43f5e" 
+                          strokeDasharray="4 4" 
+                          strokeWidth={1.5}
+                          label={{ value: 'Budget Ceiling', position: 'insideTopRight', fill: '#f43f5e', fontSize: 10, fontWeight: 'bold' }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="burn" 
+                          stroke="#6366f1" 
+                          strokeWidth={2.5} 
+                          fillOpacity={1} 
+                          fill="url(#vaultTrendGradient)" 
+                          activeDot={{ r: 6, fill: '#6366f1', stroke: '#ffffff', strokeWidth: 2 }}
+                        />
+                      </AreaChart>
+                    ) : (
+                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} opacity={0.6} />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} 
+                          fontSize={11} 
+                          tickLine={false} 
+                          axisLine={{ stroke: theme === 'dark' ? '#334155' : '#e2e8f0' }} 
+                        />
+                        <YAxis 
+                          stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} 
+                          fontSize={10} 
+                          tickFormatter={formatYAxis} 
+                          tickLine={false} 
+                          axisLine={{ stroke: theme === 'dark' ? '#334155' : '#e2e8f0' }} 
+                        />
+                        <RechartsTooltip content={<VaultTrendTooltip />} />
+                        <ReferenceLine 
+                          y={targetBudget} 
+                          stroke="#f43f5e" 
+                          strokeDasharray="4 4" 
+                          strokeWidth={1.5}
+                          label={{ value: 'Budget Ceiling', position: 'insideTopRight', fill: '#f43f5e', fontSize: 10, fontWeight: 'bold' }}
+                        />
+                        <Bar dataKey="burn" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                          {chartData.map((entry, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={entry.burn > targetBudget ? '#f43f5e' : '#6366f1'} 
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    )}
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Month-by-Month Trajectory Log */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Month-by-Month Burn History ({trend.length} Months)
+                  </h5>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTrendCSV}
+                    className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Download Trend CSV</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                  {trend.map((pt) => {
+                    const isUp = pt.diffFromPrev > 0;
+                    const isDown = pt.diffFromPrev < 0;
+                    const exceeds = pt.totalBurn > targetBudget;
+
+                    return (
+                      <div 
+                        key={pt.monthKey}
+                        className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <Calendar className="w-3 h-3 text-indigo-500" />
+                            {pt.fullLabel}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {pt.activeCount} active
+                          </span>
+                        </div>
+
+                        <div className="flex items-baseline justify-between">
+                          <span className="font-mono font-extrabold text-sm text-slate-900 dark:text-white">
+                            {formatBaseINR(pt.totalBurn)}
+                          </span>
+                          {pt.diffFromPrev !== 0 ? (
+                            <span className={`text-[10px] font-mono font-semibold flex items-center gap-0.5 ${
+                              isUp ? 'text-rose-600 dark:text-rose-400' : isDown ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'
+                            }`}>
+                              {isUp ? '+' : ''}{formatBaseINR(pt.diffFromPrev)} ({pt.diffPercent > 0 ? '+' : ''}{pt.diffPercent}%)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-mono">Baseline</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-1">
+                          <span>Budget Status:</span>
+                          <span className={exceeds ? 'text-rose-500 font-semibold' : 'text-emerald-500 font-semibold'}>
+                            {exceeds ? `Exceeds ceiling` : `Within ceiling`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: DEDICATED DOWNLOAD & EXPORT PANEL */}
           {activeView === 'export' && (
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-50/80 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900/60 border border-indigo-200/90 dark:border-indigo-800/60">

@@ -120,3 +120,39 @@ export async function generateEncryptedVaultBackup(
 
   return JSON.stringify(backupPackage, null, 2);
 }
+
+/**
+ * Generates an RFC-4180 compliant CSV of the 6-month spending trend data
+ */
+export function generateSpendingTrendCSV(trendPoints: {
+  label: string;
+  fullLabel: string;
+  year: number;
+  totalBurn: number;
+  diffFromPrev: number;
+  diffPercent: number;
+  activeCount: number;
+}[]): string {
+  const headers = [
+    'Month Label',
+    'Full Month Name',
+    'Year',
+    'Monthly Burn (INR)',
+    'MoM Variance (INR)',
+    'MoM Variance (%)',
+    'Active Subscriptions Count',
+  ];
+
+  const rows = trendPoints.map((t) => [
+    t.label,
+    `"${t.fullLabel}"`,
+    t.year,
+    t.totalBurn,
+    t.diffFromPrev,
+    `${t.diffPercent}%`,
+    t.activeCount,
+  ].join(','));
+
+  return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+}
+
