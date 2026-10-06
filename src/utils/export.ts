@@ -1,5 +1,6 @@
 import { Subscription } from '../types';
 import { encryptField, encryptSubscription } from './crypto';
+import { getNormalizedMonthlyCost, getNormalizedAnnualCost } from './calculations';
 
 /**
  * Triggers a client-side file download via a dynamically generated Blob
@@ -18,7 +19,8 @@ export function triggerDownload(content: string, filename: string, mimeType: str
 
 /**
  * Generates an RFC-4180 compliant CSV string from subscriptions list
- * Includes UTF-8 BOM so spreadsheet tools (Excel, Numbers, Sheets) parse currency symbols properly
+ * Includes UTF-8 BOM so spreadsheet tools (Excel, Numbers, Sheets) parse currency symbols properly.
+ * Formatted specifically for external budget tracking tools (Excel, Sheets, YNAB, Notion).
  */
 export function generateSubscriptionsCSV(subscriptions: Subscription[]): string {
   const headers = [
@@ -27,6 +29,8 @@ export function generateSubscriptionsCSV(subscriptions: Subscription[]): string 
     'Cost',
     'Currency',
     'Billing Cycle',
+    'Normalized Monthly Cost',
+    'Projected Annual Cost',
     'Category',
     'Status',
     'Next Renewal Date',
@@ -48,13 +52,18 @@ export function generateSubscriptionsCSV(subscriptions: Subscription[]): string 
     return str;
   };
 
-  const rows = subscriptions.map((sub) =>
-    [
+  const rows = subscriptions.map((sub) => {
+    const monthlyNormalized = Math.round(getNormalizedMonthlyCost(sub.cost, sub.billingCycle) * 100) / 100;
+    const annualNormalized = Math.round(getNormalizedAnnualCost(sub.cost, sub.billingCycle) * 100) / 100;
+
+    return [
       sub.id,
       sub.name,
       sub.cost,
       sub.currency,
       sub.billingCycle,
+      monthlyNormalized,
+      annualNormalized,
       sub.category,
       sub.isPaused ? 'Paused' : 'Active',
       sub.nextRenewalDate,
@@ -67,8 +76,8 @@ export function generateSubscriptionsCSV(subscriptions: Subscription[]): string 
       sub.updatedAt || '',
     ]
       .map(escapeCSV)
-      .join(',')
-  );
+      .join(',');
+  });
 
   // \uFEFF is UTF-8 Byte Order Mark
   return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
