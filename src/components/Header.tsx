@@ -49,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   totalSubsCount,
   currentMonthlyBurnINR,
 }) => {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, setTheme, isExplicitPreference } = useTheme();
   const { activeCurrency, setActiveCurrency, formatBaseINR } = useCurrency();
   const { user, userProfile, signOut, setNeedsOnboarding } = useAuth();
 
@@ -182,19 +182,38 @@ export const Header: React.FC<HeaderProps> = ({
               <RotateCcw className="w-4 h-4" />
             </button>
 
-            {/* Theme Toggle Button */}
+            {/* User-Accessible Explicit Theme Toggle Button */}
             <button
               id="header-theme-toggle-btn"
+              type="button"
+              role="switch"
+              aria-checked={theme === 'dark'}
               onClick={toggleTheme}
-              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
-              aria-label={`Toggle theme (currently ${theme})`}
-              className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
+              title={`Color theme is currently ${theme === 'dark' ? 'Dark' : 'Light'} mode (${isExplicitPreference ? 'user override' : 'system default'}). Click to switch explicitly to ${theme === 'dark' ? 'Light' : 'Dark'} mode.`}
+              aria-label={`Switch color theme. Currently ${theme} mode. Click to switch explicitly to ${theme === 'dark' ? 'light' : 'dark'} mode.`}
+              className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200/80 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 transition-all cursor-pointer shadow-2xs group focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {theme === 'dark' ? (
-                <Sun className="w-4 h-4 text-amber-400" />
-              ) : (
-                <Moon className="w-4 h-4 text-indigo-600" />
-              )}
+              <span
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  theme === 'light'
+                    ? 'bg-white text-amber-600 shadow-xs font-bold'
+                    : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
+                }`}
+              >
+                <Sun className={`w-3.5 h-3.5 ${theme === 'light' ? 'text-amber-500 fill-amber-500/20' : 'text-slate-400'}`} />
+                <span className="hidden md:inline text-[11px]">Light</span>
+              </span>
+
+              <span
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  theme === 'dark'
+                    ? 'bg-slate-800 text-indigo-300 shadow-xs border border-slate-700/60 font-bold'
+                    : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
+                }`}
+              >
+                <Moon className={`w-3.5 h-3.5 ${theme === 'dark' ? 'text-indigo-400 fill-indigo-400/20' : 'text-slate-400'}`} />
+                <span className="hidden md:inline text-[11px]">Dark</span>
+              </span>
             </button>
 
             {/* Notification Bell */}
@@ -316,6 +335,21 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>Edit Profile & Financial Goals</span>
                   </button>
 
+                  {/* Theme Mode in User Dropdown */}
+                  <button
+                    type="button"
+                    onClick={() => toggleTheme()}
+                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer font-medium"
+                  >
+                    <div className="flex items-center gap-2">
+                      {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
+                      <span>Switch to {theme === 'dark' ? 'Light' : 'Dark'} Mode</span>
+                    </div>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 capitalize">
+                      {theme}
+                    </span>
+                  </button>
+
                   <button
                     onClick={() => signOut()}
                     className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer font-semibold"
@@ -430,6 +464,44 @@ export const Header: React.FC<HeaderProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Explicit Theme Mode Switcher (Mobile) */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 text-xs">
+              <div className="flex items-center gap-2">
+                {theme === 'dark' ? (
+                  <Moon className="w-4 h-4 text-indigo-400" />
+                ) : (
+                  <Sun className="w-4 h-4 text-amber-500" />
+                )}
+                <div>
+                  <span className="font-medium text-slate-800 dark:text-slate-200 block">Color Theme</span>
+                  <span className="text-[10px] text-slate-400 block">
+                    {isExplicitPreference ? 'User choice set' : 'System default'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                id="mobile-drawer-theme-toggle-btn"
+                type="button"
+                role="switch"
+                aria-checked={theme === 'dark'}
+                onClick={() => toggleTheme()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white shadow-xs transition-colors cursor-pointer"
+              >
+                {theme === 'dark' ? (
+                  <>
+                    <Sun className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Switch to Light</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Switch to Dark</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* Actions Grid */}
