@@ -84,6 +84,102 @@ export function generateSubscriptionsCSV(subscriptions: Subscription[]): string 
 }
 
 /**
+ * Generates an AES-256 GCM encrypted CSV where sensitive data fields
+ * (Name, Cost, Normalized Monthly & Annual Costs, Renewal Date, Trial Date, Previous Cost, Notes, Cancellation URL)
+ * are encrypted using the user's Zero-Knowledge Vault Secret Key.
+ * Standard non-sensitive operational fields (Currency, Billing Cycle, Category, Status, Timestamps)
+ * remain intact for tabular partitioning while fully shielding financial figures and identities.
+ */
+export async function generateEncryptedSubscriptionsCSV(
+  subscriptions: Subscription[],
+  secretKey: string
+): Promise<string> {
+  const headers = [
+    'Subscription ID',
+    'Name (Encrypted AES-256)',
+    'Cost (Encrypted AES-256)',
+    'Currency',
+    'Billing Cycle',
+    'Normalized Monthly Cost (Encrypted AES-256)',
+    'Projected Annual Cost (Encrypted AES-256)',
+    'Category',
+    'Status',
+    'Next Renewal Date (Encrypted AES-256)',
+    'Free Trial Expiry (Encrypted AES-256)',
+    'Domain',
+    'Previous Price (Encrypted AES-256)',
+    'Notes (Encrypted AES-256)',
+    'Cancellation URL (Encrypted AES-256)',
+    'Encryption Algorithm',
+    'Created At',
+    'Updated At',
+  ];
+
+  const escapeCSV = (val: any): string => {
+    if (val === undefined || val === null) return '';
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const encryptedRows = await Promise.all(
+    subscriptions.map(async (sub) => {
+      const monthlyNormalized = Math.round(getNormalizedMonthlyCost(sub.cost, sub.billingCycle) * 100) / 100;
+      const annualNormalized = Math.round(getNormalizedAnnualCost(sub.cost, sub.billingCycle) * 100) / 100;
+
+      const [
+        encName,
+        encCost,
+        encMonthly,
+        encAnnual,
+        encRenewal,
+        encTrial,
+        encPrevCost,
+        encNotes,
+        encCancelUrl,
+      ] = await Promise.all([
+        encryptField(sub.name, secretKey),
+        encryptField(String(sub.cost), secretKey),
+        encryptField(String(monthlyNormalized), secretKey),
+        encryptField(String(annualNormalized), secretKey),
+        encryptField(sub.nextRenewalDate, secretKey),
+        sub.trialExpiryDate ? encryptField(sub.trialExpiryDate, secretKey) : Promise.resolve(''),
+        sub.previousCost !== undefined ? encryptField(String(sub.previousCost), secretKey) : Promise.resolve(''),
+        sub.notes ? encryptField(sub.notes, secretKey) : Promise.resolve(''),
+        sub.cancellationUrl ? encryptField(sub.cancellationUrl, secretKey) : Promise.resolve(''),
+      ]);
+
+      return [
+        sub.id,
+        encName,
+        encCost,
+        sub.currency,
+        sub.billingCycle,
+        encMonthly,
+        encAnnual,
+        sub.category,
+        sub.isPaused ? 'Paused' : 'Active',
+        encRenewal,
+        encTrial,
+        sub.domain || '',
+        encPrevCost,
+        encNotes,
+        encCancelUrl,
+        'AES-GCM-256-PBKDF2',
+        sub.createdAt || '',
+        sub.updatedAt || '',
+      ]
+        .map(escapeCSV)
+        .join(',');
+    })
+  );
+
+  return '\uFEFF' + [headers.join(','), ...encryptedRows].join('\r\n');
+}
+
+/**
  * Generates an AES-256 GCM encrypted JSON vault backup file for personal record-keeping
  */
 export async function generateEncryptedVaultBackup(

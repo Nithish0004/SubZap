@@ -26,7 +26,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Sliders,
-  BarChart3
+  BarChart3,
+  Unlock,
+  ChevronDown,
+  CheckCircle2,
+  Info
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -45,9 +49,10 @@ import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useTheme } from '../context/ThemeContext';
 import { Subscription } from '../types';
-import { calculateMonthlySpendingTrend } from '../utils/calculations';
+import { calculateMonthlySpendingTrend, getNormalizedMonthlyCost } from '../utils/calculations';
 import { 
   generateSubscriptionsCSV, 
+  generateEncryptedSubscriptionsCSV,
   generateEncryptedVaultBackup, 
   generateSpendingTrendCSV,
   triggerDownload 
@@ -76,6 +81,10 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
   const [trendChartMode, setTrendChartMode] = useState<'area' | 'bar'>('area');
   const [isExporting, setIsExporting] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
+
+  // CSV Export Configuration State (Decrypted vs Encrypted)
+  const [csvExportFormat, setCsvExportFormat] = useState<'decrypted' | 'encrypted'>('decrypted');
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
 
   // Compute 6-month historical spending trends using saved subscription data
   const trendSummary = useMemo(() => {
@@ -180,18 +189,68 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
     setTimeout(() => setCopiedJson(false), 2000);
   };
 
-  // Download CSV Spreadsheet for personal record-keeping & external budget tracking
-  const handleDownloadCSV = () => {
+  // Download CSV Spreadsheet (Supports both Decrypted plain CSV and AES-256 Encrypted CSV)
+  const handleDownloadCSV = async (mode: 'decrypted' | 'encrypted' = csvExportFormat) => {
+    setIsExporting(true);
     try {
       const dateSlug = new Date().toISOString().split('T')[0];
-      const csv = generateSubscriptionsCSV(subscriptions);
-      triggerDownload(csv, `subzap_subscriptions_budget_${dateSlug}.csv`, 'text/csv');
-      setDownloadStatus('Subscription CSV exported for external budget tracking');
+      if (mode === 'encrypted') {
+        const csv = await generateEncryptedSubscriptionsCSV(subscriptions, userSecretKey);
+        triggerDownload(
+          csv,
+          `subzap_subscriptions_encrypted_${dateSlug}.csv`,
+          'text/csv'
+        );
+        setDownloadStatus('Encrypted CSV downloaded (sensitive columns AES-256 protected)');
+      } else {
+        const csv = generateSubscriptionsCSV(subscriptions);
+        triggerDownload(
+          csv,
+          `subzap_subscriptions_decrypted_${dateSlug}.csv`,
+          'text/csv'
+        );
+        setDownloadStatus('Decrypted CSV downloaded for external budget tracking');
+      }
+      setIsCsvModalOpen(false);
       setTimeout(() => setDownloadStatus(null), 3500);
     } catch (err) {
       console.error('Error exporting CSV:', err);
+      setDownloadStatus('Failed to generate CSV export');
+      setTimeout(() => setDownloadStatus(null), 3500);
+    } finally {
+      setIsExporting(false);
     }
   };
+
+  // Sample rows for CSV live preview
+  const csvPreviewRows = useMemo(() => {
+    return subscriptions.slice(0, 3).map((sub, index) => {
+      const monthlyNormalized = Math.round(getNormalizedMonthlyCost(sub.cost, sub.billingCycle) * 100) / 100;
+      // Truncated deterministic ciphertext display for preview
+      const hashSeed = (sub.id || `sub-${index}`).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const hexIv = (hashSeed * 179).toString(16).padStart(8, '0').slice(0, 8);
+      const hexCipher = (hashSeed * 983).toString(16).padStart(12, 'a').slice(0, 12);
+
+      return {
+        id: sub.id,
+        name: sub.name,
+        cost: formatBaseINR(sub.cost),
+        currency: sub.currency || '₹',
+        cycle: sub.billingCycle,
+        monthlyNormalized: formatBaseINR(monthlyNormalized),
+        category: sub.category,
+        status: sub.isPaused ? 'Paused' : 'Active',
+        renewal: sub.nextRenewalDate,
+        notes: sub.notes || '—',
+        // Encrypted counterparts
+        encName: `${hexIv}:9f8c${hexCipher}`,
+        encCost: `${hexIv}:2b4a${hexCipher.slice(0, 6)}`,
+        encMonthlyNormalized: `${hexIv}:7e1d${hexCipher.slice(0, 6)}`,
+        encRenewal: `${hexIv}:88c1${hexCipher.slice(0, 8)}`,
+        encNotes: sub.notes ? `${hexIv}:e03b${hexCipher.slice(0, 8)}` : '—',
+      };
+    });
+  }, [subscriptions, formatBaseINR]);
 
   // Download Spending Trends CSV for historical trend analysis
   const handleDownloadTrendCSV = () => {
@@ -298,12 +357,13 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
               <button
                 id="header-export-csv-btn"
                 type="button"
-                onClick={handleDownloadCSV}
-                title="Export current subscriptions as CSV file for external budget tracking (Excel, Google Sheets, YNAB)"
+                onClick={() => setIsCsvModalOpen(true)}
+                title="Export current subscriptions as an encrypted or decrypted CSV file"
                 className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300/80 dark:border-emerald-800/80 rounded-lg transition-colors cursor-pointer"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Export CSV (Budget Tracking)</span>
+                <span>Export to CSV</span>
+                <ChevronDown className="w-3 h-3 text-emerald-600 dark:text-emerald-400 opacity-60" />
               </button>
 
               <button
@@ -535,12 +595,12 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
 
                   <button
                     id="subs-export-csv-btn"
-                    onClick={handleDownloadCSV}
-                    title="Export current subscriptions as CSV file for external budget tracking"
+                    onClick={() => setIsCsvModalOpen(true)}
+                    title="Export current subscriptions as an encrypted or decrypted CSV file"
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Export CSV (Budget Tracking)</span>
+                    <span>Export to CSV</span>
                   </button>
 
                   <button
@@ -562,12 +622,12 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     id="subs-table-export-csv-btn"
-                    onClick={handleDownloadCSV}
-                    title="Export current subscriptions as CSV file to facilitate external budget tracking"
+                    onClick={() => setIsCsvModalOpen(true)}
+                    title="Export current subscriptions as an encrypted or decrypted CSV file"
                     className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors cursor-pointer"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                    <span>Export CSV for Budget Tracking</span>
+                    <span>Export to CSV (Encrypted/Decrypted)</span>
                   </button>
                   <span className="text-xs text-slate-400 hidden md:inline">
                     Encrypted client-side in cloud
@@ -936,46 +996,233 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Option 1: CSV File Download for External Budget Tracking */}
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                        <FileSpreadsheet className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h5 className="text-sm font-bold text-slate-900 dark:text-white">
-                          CSV Export (External Budget Tracking)
-                        </h5>
-                        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
-                          .csv (RFC-4180 UTF-8 with BOM)
+              {/* Dedicated Featured Section: Export to CSV (Encrypted or Decrypted) */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-700">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center shrink-0">
+                      <FileSpreadsheet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                          Export to CSV
+                        </h4>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                          .csv RFC-4180
                         </span>
                       </div>
-                    </div>
-
-                    <p className="text-xs text-slate-600 dark:text-slate-300">
-                      Standard tabular export structured for external budget tracking across Microsoft Excel, Google Sheets, Apple Numbers, YNAB, Monarch Money, and Notion. Includes normalized monthly cost, projected annual bleed, categories, renewal dates, and status.
-                    </p>
-
-                    <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                      <span>Includes: </span>
-                      <strong className="text-slate-800 dark:text-slate-200 font-semibold">{subscriptions.length} items</strong>
-                      <span> • Normalized Monthly & Annual Cost • Billing Frequency • Dates</span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Download your subscription dataset as an encrypted or decrypted CSV file for spreadsheet tracking or secure cold backup.
+                      </p>
                     </div>
                   </div>
 
-                  <button
-                    id="export-panel-download-csv-btn"
-                    onClick={handleDownloadCSV}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    <span>Export Subscriptions as CSV for External Budget Tracking</span>
-                  </button>
+                  {/* Mode Selector Segmented Tabs */}
+                  <div className="flex items-center bg-slate-100 dark:bg-slate-900/90 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                    <button
+                      id="csv-tab-mode-decrypted"
+                      type="button"
+                      onClick={() => setCsvExportFormat('decrypted')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                        csvExportFormat === 'decrypted'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Unlock className="w-3.5 h-3.5" />
+                      <span>Decrypted CSV (Plain)</span>
+                    </button>
+
+                    <button
+                      id="csv-tab-mode-encrypted"
+                      type="button"
+                      onClick={() => setCsvExportFormat('encrypted')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                        csvExportFormat === 'encrypted'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Encrypted CSV (AES-256)</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Option 2: Encrypted Vault File Download */}
+                {/* Mode Explanation & Capabilities Card */}
+                {csvExportFormat === 'decrypted' ? (
+                  <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/80 text-xs space-y-2">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-emerald-900 dark:text-emerald-200">
+                          Decrypted CSV Format (Ready for Excel, Google Sheets, Numbers & YNAB)
+                        </span>
+                        <p className="text-emerald-800 dark:text-emerald-300 text-[11px] mt-0.5 leading-relaxed">
+                          Standard human-readable spreadsheet structured for external personal budget tracking. Includes UTF-8 BOM encoding for seamless currency display, normalized monthly burn, projected annual cost, renewal dates, and notes.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
+                      <div>• Output: Plaintext</div>
+                      <div>• BOM: UTF-8 Included</div>
+                      <div>• Formulas: Parsable</div>
+                      <div>• Records: {subscriptions.length} items</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/80 text-xs space-y-2">
+                    <div className="flex items-start gap-2">
+                      <Lock className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-indigo-900 dark:text-indigo-200">
+                          Encrypted CSV Format (Zero-Knowledge AES-256 GCM Protection)
+                        </span>
+                        <p className="text-indigo-800 dark:text-indigo-300 text-[11px] mt-0.5 leading-relaxed">
+                          Sensitive fields (Subscription Name, Cost, Monthly Burn, Annual Cost, Renewal Date, Free Trial Expiry, Previous Price, Notes, Cancellation URL) are encrypted client-side using AES-GCM-256 PBKDF2 (100,000 iterations) with your Vault Secret Key before CSV generation.
+                          Retains CSV column headers and structural columns (Currency, Billing Cycle, Category, Status) for spreadsheet parsing while completely shielding monetary figures and names.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[10px] text-indigo-700 dark:text-indigo-300">
+                      <div>• Cipher: AES-GCM-256</div>
+                      <div>• Key: Vault Session PBKDF2</div>
+                      <div>• Token: IV + Ciphertext</div>
+                      <div>• Privacy: Zero-Knowledge</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Interactive CSV Sample Output Preview Table */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-slate-500" />
+                      Live CSV Output Preview ({csvExportFormat === 'decrypted' ? 'Decrypted Plaintext' : 'Encrypted Ciphertext'})
+                    </span>
+                    <span className="font-mono text-slate-400 text-[10px]">
+                      Previewing top {Math.min(csvPreviewRows.length, 3)} of {subscriptions.length} subscriptions
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 p-2 text-xs">
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-700 text-slate-400 font-mono text-[10px] uppercase">
+                          <th className="pb-1.5 pr-3 font-semibold">Name</th>
+                          <th className="pb-1.5 pr-3 font-semibold">Cost</th>
+                          <th className="pb-1.5 pr-3 font-semibold">Cycle</th>
+                          <th className="pb-1.5 pr-3 font-semibold">Normalized/Mo</th>
+                          <th className="pb-1.5 pr-3 font-semibold">Category</th>
+                          <th className="pb-1.5 pr-3 font-semibold">Next Renewal</th>
+                          <th className="pb-1.5 font-semibold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800">
+                        {csvPreviewRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-4 text-center text-slate-400">
+                              No subscriptions added yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          csvPreviewRows.map((row) => (
+                            <tr key={row.id} className="font-mono">
+                              <td className="py-1.5 pr-3 font-sans font-bold text-slate-900 dark:text-white truncate max-w-[140px]">
+                                {csvExportFormat === 'decrypted' ? (
+                                  row.name
+                                ) : (
+                                  <span className="text-indigo-600 dark:text-indigo-400 font-mono text-[10px]" title={row.encName}>
+                                    🔒 {row.encName}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-1.5 pr-3 text-slate-800 dark:text-slate-200">
+                                {csvExportFormat === 'decrypted' ? (
+                                  row.cost
+                                ) : (
+                                  <span className="text-indigo-600 dark:text-indigo-400 text-[10px]">
+                                    🔒 {row.encCost}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-1.5 pr-3 text-slate-500 capitalize">{row.cycle}</td>
+                              <td className="py-1.5 pr-3 text-emerald-600 dark:text-emerald-400">
+                                {csvExportFormat === 'decrypted' ? (
+                                  row.monthlyNormalized
+                                ) : (
+                                  <span className="text-indigo-600 dark:text-indigo-400 text-[10px]">
+                                    🔒 {row.encMonthlyNormalized}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-1.5 pr-3 text-slate-600 dark:text-slate-300 font-sans">{row.category}</td>
+                              <td className="py-1.5 pr-3 text-slate-700 dark:text-slate-300">
+                                {csvExportFormat === 'decrypted' ? (
+                                  row.renewal
+                                ) : (
+                                  <span className="text-indigo-600 dark:text-indigo-400 text-[10px]">
+                                    🔒 {row.encRenewal}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-1.5">
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                                  row.status === 'Active'
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                                }`}>
+                                  {row.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* CSV Download Action Buttons */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>Download format: </span>
+                    <code className="font-mono font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-[10px]">
+                      subzap_subscriptions_{csvExportFormat}_{new Date().toISOString().split('T')[0]}.csv
+                    </code>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      id="export-panel-download-decrypted-csv-btn"
+                      type="button"
+                      onClick={() => handleDownloadCSV('decrypted')}
+                      disabled={isExporting}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Unlock className="w-3.5 h-3.5" />
+                      <span>Download Decrypted CSV</span>
+                    </button>
+
+                    <button
+                      id="export-panel-download-encrypted-csv-btn"
+                      type="button"
+                      onClick={() => handleDownloadCSV('encrypted')}
+                      disabled={isExporting}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Download Encrypted CSV</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Other Export Formats (JSON Vault & Developer Snapshots) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Option: Encrypted Vault JSON File Download */}
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-3">
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -984,7 +1231,7 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                       </div>
                       <div>
                         <h5 className="text-sm font-bold text-slate-900 dark:text-white">
-                          Encrypted Vault Backup
+                          Full Encrypted Vault Backup (.json)
                         </h5>
                         <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
                           .json (AES-GCM-256)
@@ -993,7 +1240,7 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                     </div>
 
                     <p className="text-xs text-slate-600 dark:text-slate-300">
-                      Zero-knowledge ciphertext export generated using your 256-bit PBKDF2 session key. Safe for cold storage, cloud drive backup, or USB personal archives.
+                      Complete snapshot archive containing all subscription records plus user profile preferences. Encrypted using your 256-bit PBKDF2 session key.
                     </p>
 
                     <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-[11px] font-mono text-slate-500 dark:text-slate-400">
@@ -1007,10 +1254,48 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                     id="export-panel-download-enc-btn"
                     onClick={handleDownloadEncrypted}
                     disabled={isExporting}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-50"
                   >
                     <Lock className="w-4 h-4" />
-                    <span>{isExporting ? 'Encrypting Vault...' : 'Download Encrypted File (.json)'}</span>
+                    <span>{isExporting ? 'Encrypting Vault...' : 'Download Encrypted Vault (.json)'}</span>
+                  </button>
+                </div>
+
+                {/* Option: Spending Trends CSV Export */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                        <TrendingUp className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-slate-900 dark:text-white">
+                          6-Month Spending Trends (.csv)
+                        </h5>
+                        <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-400 font-mono">
+                          .csv (Historical MoM Variance)
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      Export your 6-month historical trajectory and MoM delta records computed from subscription intervals for time-series analytics.
+                    </p>
+
+                    <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                      <span>Periods: </span>
+                      <strong className="text-purple-600 dark:text-purple-400 font-semibold">{trend.length} monthly cycles</strong>
+                      <span> • Burn trajectory & MoM %</span>
+                    </div>
+                  </div>
+
+                  <button
+                    id="export-panel-download-trend-csv-btn"
+                    onClick={handleDownloadTrendCSV}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-xs transition-all cursor-pointer"
+                  >
+                    <TrendingUp className="w-4 h-4" />
+                    <span>Download Spending Trends CSV</span>
                   </button>
                 </div>
               </div>
@@ -1150,12 +1435,12 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
             <button
               id="footer-export-csv-budget-btn"
               type="button"
-              onClick={handleDownloadCSV}
-              title="Export current subscription data as a CSV file to facilitate external budget tracking"
+              onClick={() => setIsCsvModalOpen(true)}
+              title="Export current subscription data as an encrypted or decrypted CSV file"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 font-semibold cursor-pointer transition-colors"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Export CSV (Budget Tracking)</span>
+              <span>Export to CSV</span>
             </button>
 
             <button
@@ -1177,6 +1462,144 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Export to CSV Modal Dialog Overlay */}
+        {isCsvModalOpen && (
+          <div 
+            id="export-to-csv-modal-overlay"
+            className="absolute inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+            onClick={() => setIsCsvModalOpen(false)}
+          >
+            <div 
+              id="export-to-csv-modal"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Export to CSV</h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Download your subscription data as an encrypted or decrypted CSV file</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsCsvModalOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  aria-label="Close CSV Export"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Selection Options */}
+              <div className="space-y-2.5">
+                {/* 1. Decrypted CSV Option */}
+                <div 
+                  id="csv-modal-option-decrypted"
+                  onClick={() => setCsvExportFormat('decrypted')}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                    csvExportFormat === 'decrypted'
+                      ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-1 ring-emerald-500'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                        <Unlock className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">
+                        Decrypted CSV (Plain Spreadsheet)
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/80 dark:text-emerald-200">
+                      Excel / Sheets / YNAB
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
+                    Readable plaintext values for subscription names, costs, normalized monthly & annual burn, renewal dates, and notes. Perfect for personal budgeting in Excel, Google Sheets, Numbers, or Notion.
+                  </p>
+                </div>
+
+                {/* 2. Encrypted CSV Option */}
+                <div 
+                  id="csv-modal-option-encrypted"
+                  onClick={() => setCsvExportFormat('encrypted')}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                    csvExportFormat === 'encrypted'
+                      ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 ring-1 ring-indigo-500'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                        <Lock className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">
+                        Encrypted CSV (AES-256 Zero-Knowledge)
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/80 dark:text-indigo-200">
+                      Zero-Knowledge
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
+                    Sensitive columns (Name, Cost, Normalized Costs, Renewal Dates, Trial Date, Notes, URL) are encrypted with AES-GCM-256 using your Vault Secret Key before CSV generation. Safe for cold storage or untrusted cloud sync drives.
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Info */}
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                  <Info className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Target: <strong>{subscriptions.length} subscriptions</strong></span>
+                </div>
+                <span className="font-mono text-slate-400 text-[10px]">
+                  {csvExportFormat === 'decrypted' ? 'RFC-4180 Decrypted' : 'AES-GCM-256 Cipher'}
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCsvModalOpen(false)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    id="modal-download-decrypted-csv-btn"
+                    type="button"
+                    onClick={() => handleDownloadCSV('decrypted')}
+                    disabled={isExporting}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Download Decrypted CSV</span>
+                  </button>
+                  <button
+                    id="modal-download-encrypted-csv-btn"
+                    type="button"
+                    onClick={() => handleDownloadCSV('encrypted')}
+                    disabled={isExporting}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Download Encrypted CSV</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
