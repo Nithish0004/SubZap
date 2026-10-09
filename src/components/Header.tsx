@@ -18,7 +18,8 @@ import {
   Database,
   Menu,
   X,
-  Target
+  Target,
+  Laptop
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -49,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
   totalSubsCount,
   currentMonthlyBurnINR,
 }) => {
-  const { theme, toggleTheme, setTheme, isExplicitPreference } = useTheme();
+  const { theme, toggleTheme, setTheme, isExplicitPreference, resetToSystemPreference } = useTheme();
   const { activeCurrency, setActiveCurrency, formatBaseINR } = useCurrency();
   const { user, userProfile, signOut, setNeedsOnboarding } = useAuth();
 
@@ -350,6 +351,23 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   </button>
 
+                  {isExplicitPreference && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetToSystemPreference();
+                      }}
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer text-xs"
+                      title="Reset theme override to follow your operating system settings"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Laptop className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Follow System OS Theme</span>
+                      </div>
+                      <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">Reset</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => signOut()}
                     className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer font-semibold"
@@ -482,26 +500,40 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               </div>
 
-              <button
-                id="mobile-drawer-theme-toggle-btn"
-                type="button"
-                role="switch"
-                aria-checked={theme === 'dark'}
-                onClick={() => toggleTheme()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white shadow-xs transition-colors cursor-pointer"
-              >
-                {theme === 'dark' ? (
-                  <>
-                    <Sun className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Switch to Light</span>
-                  </>
-                ) : (
-                  <>
-                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Switch to Dark</span>
-                  </>
+              <div className="flex items-center gap-1.5">
+                <button
+                  id="mobile-drawer-theme-toggle-btn"
+                  type="button"
+                  role="switch"
+                  aria-checked={theme === 'dark'}
+                  onClick={() => toggleTheme()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white shadow-xs transition-colors cursor-pointer"
+                >
+                  {theme === 'dark' ? (
+                    <>
+                      <Sun className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Switch to Light</span>
+                    </>
+                  ) : (
+                    <>
+                      <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Switch to Dark</span>
+                    </>
+                  )}
+                </button>
+                {isExplicitPreference && (
+                  <button
+                    id="mobile-drawer-theme-reset-btn"
+                    type="button"
+                    onClick={() => resetToSystemPreference()}
+                    title="Follow System OS Theme"
+                    aria-label="Reset to System Theme"
+                    className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                  >
+                    <Laptop className="w-3.5 h-3.5" />
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
 
             {/* Actions Grid */}
