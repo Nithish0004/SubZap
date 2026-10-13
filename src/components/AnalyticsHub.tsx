@@ -13,12 +13,13 @@ import {
   ArrowRight,
   Sparkles,
   Zap,
-  Wallet
+  Wallet,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 import { AnalyticsMetrics, Subscription } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
 import { useAuth } from '../context/AuthContext';
-import { CategoryDonutChart } from './CategoryDonutChart';
+import { CategoryPieChart } from './CategoryPieChart';
 import { BrandLogo } from './BrandLogo';
 import { MultiCurrencyTooltip } from './MultiCurrencyTooltip';
 import { BudgetLimitGauge } from './BudgetLimitGauge';
@@ -284,16 +285,19 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
 
       {/* Main Grid: Category Donut Chart & Renewals within 7 Days */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 w-full min-w-0">
-        {/* Left Col: Donut Chart Category Breakdown (7 cols) */}
+        {/* Left Col: Category Distribution Pie Chart with Recharts (7 cols) */}
         <div className="lg:col-span-7 p-4 sm:p-6 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between w-full min-w-0 overflow-hidden">
           <div className="w-full min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-5 sm:mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-4 sm:mb-5">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
-                  Burn Rate by Category
-                </h3>
+                <div className="flex items-center gap-2">
+                  <PieChartIcon className="w-4 h-4 text-indigo-500" />
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                    Subscription Category Distribution
+                  </h3>
+                </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Visual breakdown of monthly outflow across subscription categories
+                  Interactive Recharts distribution breakdown across Entertainment, Software, Utilities & more
                 </p>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-mono shrink-0">
@@ -301,9 +305,10 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
               </span>
             </div>
 
-            <CategoryDonutChart
+            <CategoryPieChart
               categories={metrics.categoryBreakdown}
               totalBurn={metrics.totalMonthlyBurn}
+              subscriptions={subscriptions}
             />
           </div>
 
