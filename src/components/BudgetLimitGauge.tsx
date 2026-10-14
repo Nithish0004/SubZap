@@ -16,14 +16,19 @@ import { convertFromINR } from '../utils/currency';
 interface BudgetLimitGaugeProps {
   currentMonthlyBurnINR: number;
   compact?: boolean;
+  projectionMode?: 'monthly' | 'annual';
 }
 
 export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
   currentMonthlyBurnINR,
   compact = false,
+  projectionMode = 'monthly',
 }) => {
   const { userProfile, completeOnboarding, setNeedsOnboarding } = useAuth();
   const { formatBaseINR, activeCurrency, symbols } = useCurrency();
+
+  const isAnnual = projectionMode === 'annual';
+  const multiplier = isAnnual ? 12 : 1;
 
   const [isEditing, setIsEditing] = useState(false);
   const [newBudget, setNewBudget] = useState(userProfile?.targetMonthlyBudget?.toString() || '5000');
@@ -35,16 +40,18 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
     }
   }, [userProfile?.targetMonthlyBudget]);
 
-  const targetBudget = userProfile?.targetMonthlyBudget || 5000;
+  const rawMonthlyBudget = userProfile?.targetMonthlyBudget || 5000;
+  const targetBudget = rawMonthlyBudget * multiplier;
+  const currentBurn = currentMonthlyBurnINR * multiplier;
   const goal = userProfile?.financialGoal || 'Moderate Tracking';
 
-  const percentage = Math.min(Math.round((currentMonthlyBurnINR / targetBudget) * 100), 200);
-  const isOverBudget = currentMonthlyBurnINR > targetBudget;
+  const percentage = Math.min(Math.round((currentBurn / (targetBudget || 1)) * 100), 200);
+  const isOverBudget = currentBurn > targetBudget;
   const isNearLimit = !isOverBudget && percentage >= 80;
 
   // Convert for active currency display
   const targetInActive = convertFromINR(targetBudget, activeCurrency);
-  const burnInActive = convertFromINR(currentMonthlyBurnINR, activeCurrency);
+  const burnInActive = convertFromINR(currentBurn, activeCurrency);
   const symbol = symbols[activeCurrency];
 
   const handleSaveBudget = async () => {
@@ -135,7 +142,7 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              Target monthly ceiling synced with cloud profiling
+              {isAnnual ? 'Target annual expenditure ceiling synced with cloud profiling' : 'Target monthly ceiling synced with cloud profiling'}
             </p>
           </div>
         </div>
@@ -188,14 +195,18 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
       {/* Numerical Comparison Bar */}
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
         <div className="flex items-baseline gap-2">
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Target Budget:</span>
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {isAnnual ? 'Target Annual Budget:' : 'Target Monthly Budget:'}
+          </span>
           <span className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-white">
             {formatBaseINR(targetBudget)}
           </span>
         </div>
 
         <div className="flex items-baseline gap-2">
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Current Burn:</span>
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {isAnnual ? 'Projected Annual Spend:' : 'Current Monthly Burn:'}
+          </span>
           <span className={`text-base sm:text-lg font-black font-mono ${
             isOverBudget 
               ? 'text-rose-600 dark:text-rose-400' 
@@ -203,7 +214,7 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
               ? 'text-amber-600 dark:text-amber-400' 
               : 'text-emerald-600 dark:text-emerald-400'
           }`}>
-            {formatBaseINR(currentMonthlyBurnINR)}
+            {formatBaseINR(currentBurn)}
           </span>
           <span className="text-xs font-mono text-slate-400">({percentage}%)</span>
         </div>
@@ -228,17 +239,17 @@ export const BudgetLimitGauge: React.FC<BudgetLimitGaugeProps> = ({
         {isOverBudget ? (
           <div className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 font-semibold">
             <ShieldAlert className="w-4 h-4 shrink-0" />
-            <span>Budget Exceeded! Bleed is {formatBaseINR(currentMonthlyBurnINR - targetBudget)} over limit.</span>
+            <span>Budget Exceeded! Bleed is {formatBaseINR(currentBurn - targetBudget)} over {isAnnual ? 'annual' : 'monthly'} limit.</span>
           </div>
         ) : isNearLimit ? (
           <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-semibold">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>Caution: Near budget ceiling ({formatBaseINR(targetBudget - currentMonthlyBurnINR)} cushion remains).</span>
+            <span>Caution: Near budget ceiling ({formatBaseINR(targetBudget - currentBurn)} cushion remains).</span>
           </div>
         ) : (
           <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
             <CheckCircle className="w-4 h-4 shrink-0" />
-            <span>Optimal Defense: Spending is safely within target ({formatBaseINR(targetBudget - currentMonthlyBurnINR)} headroom).</span>
+            <span>Optimal Defense: Spending is safely within target ({formatBaseINR(targetBudget - currentBurn)} headroom).</span>
           </div>
         )}
 

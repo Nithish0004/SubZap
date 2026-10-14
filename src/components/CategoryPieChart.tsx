@@ -16,6 +16,8 @@ interface CategoryPieChartProps {
   categories: CategoryExpense[];
   totalBurn: number;
   subscriptions?: Subscription[];
+  projectionMode?: 'monthly' | 'annual';
+  onProjectionModeChange?: (mode: 'monthly' | 'annual') => void;
 }
 
 // Custom Active Shape for high-impact hover interaction
@@ -28,8 +30,6 @@ const renderActiveShape = (props: any) => {
     startAngle,
     endAngle,
     fill,
-    payload,
-    percent,
   } = props;
 
   return (
@@ -67,13 +67,18 @@ const renderActiveShape = (props: any) => {
 export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
   categories,
   totalBurn,
-  subscriptions = []
+  subscriptions = [],
+  projectionMode = 'monthly',
+  onProjectionModeChange,
 }) => {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [metricMode, setMetricMode] = useState<'monthly' | 'count'>('monthly');
+  const [metricMode, setMetricMode] = useState<'spend' | 'count'>('spend');
   const [chartStyle, setChartStyle] = useState<'donut' | 'pie'>('donut');
   const { formatBaseINR, getBreakdown } = useCurrency();
   const { theme } = useTheme();
+
+  const isAnnual = projectionMode === 'annual';
+  const effectiveTotalBurn = isAnnual ? totalBurn * 12 : totalBurn;
 
   // If no data
   if (categories.length === 0 || totalBurn <= 0) {
@@ -84,7 +89,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
         </div>
         <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No Subscriptions Available</h4>
         <p className="text-slate-500 dark:text-slate-400 text-xs mt-1 max-w-xs">
-          Add subscriptions across categories (Entertainment, Software, Utility, etc.) to visualize monthly burn distribution.
+          Add subscriptions across categories (Entertainment, Software, Utility, etc.) to visualize {isAnnual ? 'annual' : 'monthly'} spend distribution.
         </p>
       </div>
     );
@@ -96,11 +101,11 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
   // Prepare recharts data
   const chartData = categories.map((cat, idx) => ({
     name: cat.category,
-    value: metricMode === 'monthly' ? cat.monthlyAmount : cat.count,
+    value: metricMode === 'spend' ? (isAnnual ? cat.annualAmount : cat.monthlyAmount) : cat.count,
     monthlyAmount: cat.monthlyAmount,
     annualAmount: cat.annualAmount,
     count: cat.count,
-    percentage: metricMode === 'monthly' 
+    percentage: metricMode === 'spend' 
       ? cat.percentage 
       : totalCount > 0 ? (cat.count / totalCount) * 100 : 0,
     color: cat.color,
@@ -114,7 +119,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700/80 text-left min-w-[210px] pointer-events-none z-50">
+        <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700/80 text-left min-w-[220px] pointer-events-none z-50">
           <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2 min-w-0">
               <span
@@ -138,18 +143,29 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
 
           <div className="pt-2 space-y-1.5">
             <div className="flex items-center justify-between text-xs font-mono tabular-nums">
-              <span className="text-slate-500 dark:text-slate-400">Monthly Burn:</span>
+              <span className="text-slate-500 dark:text-slate-400">
+                {isAnnual ? 'Projected Annual Spend:' : 'Monthly Burn:'}
+              </span>
               <span className="font-extrabold text-slate-900 dark:text-white">
-                {formatBaseINR(data.monthlyAmount)}
+                {formatBaseINR(isAnnual ? data.annualAmount : data.monthlyAmount)}{isAnnual ? '/yr' : ''}
               </span>
             </div>
 
             <div className="flex items-center justify-between text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
-              <span>Approx. USD:</span>
+              <span>{isAnnual ? 'Monthly Equivalent:' : 'Approx. USD:'}</span>
               <span className="font-semibold text-slate-700 dark:text-slate-300">
-                {getBreakdown(data.monthlyAmount).usd}
+                {isAnnual ? `${formatBaseINR(data.monthlyAmount)}/mo` : getBreakdown(data.monthlyAmount).usd}
               </span>
             </div>
+
+            {isAnnual && (
+              <div className="flex items-center justify-between text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                <span>Annualized USD:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  ≈ {getBreakdown(data.annualAmount).usd}
+                </span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100 dark:border-slate-800">
               <span className="flex items-center gap-1 font-medium">
@@ -157,7 +173,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
                 {data.count} active sub{data.count === 1 ? '' : 's'}
               </span>
               <span className="text-indigo-600 dark:text-indigo-400 font-semibold font-mono">
-                {formatBaseINR(data.annualAmount)}/yr
+                {isAnnual ? `${formatBaseINR(data.monthlyAmount)}/mo` : `${formatBaseINR(data.annualAmount)}/yr`}
               </span>
             </div>
           </div>
@@ -177,19 +193,19 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
 
   return (
     <div className="w-full flex flex-col space-y-4">
-      {/* Sub-header controls: Metric switcher (Monthly Spend vs Count) & Chart style (Donut vs Full Pie) */}
+      {/* Sub-header controls: Metric switcher & Chart style */}
       <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800/80">
         <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/70 p-1 rounded-xl">
           <button
             type="button"
-            onClick={() => setMetricMode('monthly')}
+            onClick={() => setMetricMode('spend')}
             className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
-              metricMode === 'monthly'
+              metricMode === 'spend'
                 ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            By Monthly Burn (₹)
+            {isAnnual ? 'By Annual Spend (₹)' : 'By Monthly Burn (₹)'}
           </button>
           <button
             type="button"
@@ -204,33 +220,62 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/70 p-1 rounded-xl">
-          <button
-            type="button"
-            onClick={() => setChartStyle('donut')}
-            className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
-              chartStyle === 'donut'
-                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-            title="Donut format with center KPI"
-          >
-            <CircleDot className="w-3 h-3" />
-            <span>Donut</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setChartStyle('pie')}
-            className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
-              chartStyle === 'pie'
-                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-            title="Classic solid pie chart"
-          >
-            <PieChartIcon className="w-3 h-3" />
-            <span>Solid Pie</span>
-          </button>
+        <div className="flex items-center gap-2">
+          {onProjectionModeChange && (
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800/70 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => onProjectionModeChange('monthly')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-lg transition-all ${
+                  !isAnnual
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                type="button"
+                onClick={() => onProjectionModeChange('annual')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-lg transition-all ${
+                  isAnnual
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                Annual
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/70 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setChartStyle('donut')}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
+                chartStyle === 'donut'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+              title="Donut format with center KPI"
+            >
+              <CircleDot className="w-3 h-3" />
+              <span>Donut</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartStyle('pie')}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
+                chartStyle === 'pie'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+              title="Classic solid pie chart"
+            >
+              <PieChartIcon className="w-3 h-3" />
+              <span>Solid Pie</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -276,17 +321,25 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
           {chartStyle === 'donut' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-4">
               <span className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold truncate max-w-[140px]">
-                {activeCategory ? activeCategory.name : (metricMode === 'monthly' ? 'Monthly Burn' : 'Total Subs')}
+                {activeCategory 
+                  ? activeCategory.name 
+                  : (metricMode === 'spend' 
+                    ? (isAnnual ? 'Annual Outflow' : 'Monthly Burn') 
+                    : 'Total Subs')}
               </span>
               <span className="text-lg sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight font-mono tabular-nums mt-0.5">
                 {activeCategory 
-                  ? (metricMode === 'monthly' ? formatBaseINR(activeCategory.monthlyAmount) : `${activeCategory.count} subs`)
-                  : (metricMode === 'monthly' ? formatBaseINR(totalBurn) : `${totalCount} subs`)}
+                  ? (metricMode === 'spend' 
+                    ? formatBaseINR(isAnnual ? activeCategory.annualAmount : activeCategory.monthlyAmount) 
+                    : `${activeCategory.count} subs`)
+                  : (metricMode === 'spend' 
+                    ? formatBaseINR(effectiveTotalBurn) 
+                    : `${totalCount} subs`)}
               </span>
               <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">
                 {activeCategory
                   ? `${activeCategory.percentage.toFixed(1)}% of total`
-                  : `${categories.length} categories`}
+                  : (isAnnual ? 'Annual Projected Run-Rate' : `${categories.length} categories`)}
               </span>
             </div>
           )}
@@ -296,9 +349,11 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
         <div className="w-full min-w-0 flex-1 space-y-2">
           {categories.map((cat, idx) => {
             const isHovered = activeIndex === idx;
-            const pct = metricMode === 'monthly' 
+            const pct = metricMode === 'spend' 
               ? cat.percentage 
               : totalCount > 0 ? (cat.count / totalCount) * 100 : 0;
+
+            const displayAmount = isAnnual ? cat.annualAmount : cat.monthlyAmount;
 
             return (
               <div
@@ -326,9 +381,11 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-mono tabular-nums text-slate-900 dark:text-slate-100 font-bold">
-                      {metricMode === 'monthly' ? formatBaseINR(cat.monthlyAmount) : `${cat.count} (${pct.toFixed(0)}%)`}
+                      {metricMode === 'spend' 
+                        ? `${formatBaseINR(displayAmount)}${isAnnual ? '/yr' : ''}` 
+                        : `${cat.count} (${pct.toFixed(0)}%)`}
                     </span>
-                    {metricMode === 'monthly' && (
+                    {metricMode === 'spend' && (
                       <span className="text-slate-500 dark:text-slate-400 font-mono w-8 sm:w-9 text-right text-[11px]">
                         {pct.toFixed(0)}%
                       </span>

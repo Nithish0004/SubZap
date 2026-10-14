@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   DollarSign, 
   Flame, 
@@ -14,7 +14,8 @@ import {
   Sparkles,
   Zap,
   Wallet,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  CalendarRange
 } from 'lucide-react';
 import { AnalyticsMetrics, Subscription } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
@@ -47,6 +48,9 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
 }) => {
   const { formatBaseINR, getBreakdown } = useCurrency();
   const { userProfile, setNeedsOnboarding } = useAuth();
+  const [projectionMode, setProjectionMode] = useState<'monthly' | 'annual'>('monthly');
+
+  const isAnnual = projectionMode === 'annual';
 
   // Urgent renewals within 7 days
   const upcomingRenewals = subscriptions
@@ -67,8 +71,11 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
 
   // Profile-linked calculations
   const livingExpense = userProfile?.averageMonthlyExpense || 45000;
+  const annualLivingExpense = livingExpense * 12;
   const livingExpenseDrainPct = ((currentMonthlyBurn / (livingExpense || 1)) * 100).toFixed(1);
-  const isHighLivingDrain = parseFloat(livingExpenseDrainPct) > 12;
+  const annualLivingExpenseDrainPct = ((currentYearlyBleed / (annualLivingExpense || 1)) * 100).toFixed(1);
+  const effectiveLivingDrainPct = isAnnual ? annualLivingExpenseDrainPct : livingExpenseDrainPct;
+  const isHighLivingDrain = parseFloat(effectiveLivingDrainPct) > 12;
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300 w-full min-w-0 max-w-full">
@@ -115,16 +122,71 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
         </div>
       </div>
 
+      {/* Projection Horizon Segmented Switcher Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+            {isAnnual ? <CalendarRange className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                Projection Horizon
+              </span>
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80">
+                {isAnnual ? '365-Day Long-Term Forecast' : '30-Day Cashflow Cycles'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {isAnnual 
+                ? 'Switching all metrics, gauges, trendlines, and category shares to full annual expenditure projections' 
+                : 'Evaluating current monthly recurring burn rates, instant cashflow, and immediate cycle commitments'}
+            </p>
+          </div>
+        </div>
+
+        {/* Master Monthly vs Annual Toggle */}
+        <div className="flex items-center bg-slate-100 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700/60 self-start sm:self-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => setProjectionMode('monthly')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              !isAnnual
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs ring-1 ring-slate-900/5 dark:ring-white/10'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Monthly View</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setProjectionMode('annual')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              isAnnual
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs ring-1 ring-slate-900/5 dark:ring-white/10'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Annual Projections</span>
+          </button>
+        </div>
+      </div>
+
       {/* Personalized Budget Limit Gauge */}
-      <BudgetLimitGauge currentMonthlyBurnINR={currentMonthlyBurn} />
+      <BudgetLimitGauge 
+        currentMonthlyBurnINR={currentMonthlyBurn} 
+        projectionMode={projectionMode}
+      />
 
       {/* KPI Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 sm:gap-4 w-full min-w-0">
-        {/* Card 1: Monthly Burn */}
+        {/* Card 1: Outflow Burn (Monthly vs Annual) */}
         <div className="relative p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm transition-all overflow-hidden group w-full min-w-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
-              Monthly Burn (₹)
+              {isAnnual ? 'Projected Annual Outflow' : 'Monthly Burn (₹)'}
             </span>
             <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
               <Flame className="w-4 h-4" />
@@ -133,31 +195,33 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
 
           <div className="mt-1 min-w-0">
             <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums tracking-tight flex items-baseline gap-1 flex-wrap">
-              <span className="truncate">{formatBaseINR(currentMonthlyBurn)}</span>
-              <span className="text-xs font-normal text-slate-400 font-sans">/mo</span>
+              <span className="truncate">{formatBaseINR(isAnnual ? currentYearlyBleed : currentMonthlyBurn)}</span>
+              <span className="text-xs font-normal text-slate-400 font-sans">{isAnnual ? '/yr' : '/mo'}</span>
             </div>
 
             {hasSimulation ? (
               <div className="flex items-center gap-1 mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium font-mono truncate">
                 <TrendingDown className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">-{formatBaseINR(metrics.simulatedMonthlySavings)}/mo simulated</span>
+                <span className="truncate">
+                  -{formatBaseINR(isAnnual ? metrics.simulatedYearlySavings : metrics.simulatedMonthlySavings)}{isAnnual ? '/yr' : '/mo'} simulated
+                </span>
               </div>
             ) : (
               <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-1 min-w-0">
                 <span className="truncate">{metrics.activeCount} active</span>
                 <span className="font-mono font-medium text-slate-700 dark:text-slate-300 shrink-0">
-                  ≈ {getBreakdown(currentMonthlyBurn).usd}
+                  ≈ {getBreakdown(isAnnual ? currentYearlyBleed : currentMonthlyBurn).usd}
                 </span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Card 2: Projected Yearly Bleed */}
+        {/* Card 2: Complementary Horizon (Yearly Bleed vs Monthly Run-Rate) */}
         <div className="relative p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm transition-all overflow-hidden group w-full min-w-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
-              Projected Yearly Bleed
+              {isAnnual ? 'Prorated Monthly Rate' : 'Projected Yearly Bleed'}
             </span>
             <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
               <TrendingDown className="w-4 h-4" />
@@ -166,20 +230,22 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
 
           <div className="mt-1 min-w-0">
             <div className="text-2xl sm:text-3xl font-extrabold text-indigo-600 dark:text-indigo-300 font-mono tabular-nums tracking-tight flex items-baseline gap-1 flex-wrap">
-              <span className="truncate">{formatBaseINR(currentYearlyBleed)}</span>
-              <span className="text-xs font-normal text-slate-400 font-sans">/yr</span>
+              <span className="truncate">{formatBaseINR(isAnnual ? currentMonthlyBurn : currentYearlyBleed)}</span>
+              <span className="text-xs font-normal text-slate-400 font-sans">{isAnnual ? '/mo' : '/yr'}</span>
             </div>
 
             {hasSimulation ? (
               <div className="flex items-center gap-1 mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium font-mono truncate">
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">-{formatBaseINR(metrics.simulatedYearlySavings)}/yr saved</span>
+                <span className="truncate">
+                  -{formatBaseINR(isAnnual ? metrics.simulatedMonthlySavings : metrics.simulatedYearlySavings)}{isAnnual ? '/mo' : '/yr'} saved
+                </span>
               </div>
             ) : (
               <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-1 min-w-0">
-                <span className="truncate">Annualized true</span>
+                <span className="truncate">{isAnnual ? '30-day normalized' : 'Annualized true'}</span>
                 <span className="font-mono font-medium text-slate-700 dark:text-slate-300 shrink-0">
-                  ≈ {getBreakdown(currentYearlyBleed).usd}
+                  ≈ {getBreakdown(isAnnual ? currentMonthlyBurn : currentYearlyBleed).usd}
                 </span>
               </div>
             )}
@@ -190,7 +256,7 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
         <div className="relative p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm transition-all overflow-hidden group w-full min-w-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
-              Living Expense Drain
+              {isAnnual ? 'Annual Living Drain' : 'Living Expense Drain'}
             </span>
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center border shrink-0 ${
               isHighLivingDrain 
@@ -203,12 +269,12 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
 
           <div className="mt-1 min-w-0">
             <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums tracking-tight flex items-baseline gap-1 flex-wrap">
-              <span>{livingExpenseDrainPct}%</span>
+              <span>{effectiveLivingDrainPct}%</span>
               <span className="text-xs font-normal text-slate-400 font-sans">of expenses</span>
             </div>
 
             <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-1 min-w-0">
-              <span className="truncate">Base: {formatBaseINR(livingExpense)}</span>
+              <span className="truncate">Base: {formatBaseINR(isAnnual ? annualLivingExpense : livingExpense)}{isAnnual ? '/yr' : ''}</span>
               <span className={`font-medium shrink-0 ${isHighLivingDrain ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                 {isHighLivingDrain ? 'Elevated' : 'Healthy'}
               </span>
@@ -246,7 +312,7 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
               </div>
             ) : (
               <p className="text-xs text-slate-400 mt-2 truncate">
-                No active trials at risk
+                {isAnnual ? 'No upcoming trial billing jumps' : 'No active trials at risk'}
               </p>
             )}
           </div>
@@ -256,7 +322,7 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
         <div className="relative p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm transition-all overflow-hidden group w-full min-w-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
-              Recovered Savings
+              {isAnnual ? 'Annualized Savings' : 'Recovered Savings'}
             </span>
             <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
               <ShieldCheck className="w-4 h-4" />
@@ -265,22 +331,26 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
 
           <div className="mt-1 min-w-0">
             <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums tracking-tight flex items-baseline gap-1 flex-wrap">
-              <span className="truncate">+{formatBaseINR(metrics.pausedMonthlySavings)}</span>
-              <span className="text-xs font-normal text-slate-400 font-sans">/mo</span>
+              <span className="truncate">
+                +{formatBaseINR(isAnnual ? metrics.pausedMonthlySavings * 12 : metrics.pausedMonthlySavings)}
+              </span>
+              <span className="text-xs font-normal text-slate-400 font-sans">{isAnnual ? '/yr' : '/mo'}</span>
             </div>
 
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 truncate">
-              <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">{metrics.pausedCount}</strong> paused ({formatBaseINR(metrics.pausedMonthlySavings * 12)}/yr saved)
+              <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">{metrics.pausedCount}</strong> paused ({isAnnual ? `${formatBaseINR(metrics.pausedMonthlySavings)}/mo base` : `${formatBaseINR(metrics.pausedMonthlySavings * 12)}/yr saved`})
             </p>
           </div>
         </div>
       </div>
 
-      {/* Monthly Spending Trend Line Chart (Last 6 Months Difference Analysis) */}
+      {/* Monthly / Annual Spend Trend Line Chart */}
       <MonthlySpendTrendChart
         subscriptions={subscriptions}
         simulatedCancelledIds={simulatedCancelledIds}
         targetBudget={userProfile?.targetMonthlyBudget}
+        projectionMode={projectionMode}
+        onProjectionModeChange={setProjectionMode}
       />
 
       {/* Main Grid: Category Donut Chart & Renewals within 7 Days */}
@@ -293,11 +363,13 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
                 <div className="flex items-center gap-2">
                   <PieChartIcon className="w-4 h-4 text-indigo-500" />
                   <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
-                    Subscription Category Distribution
+                    {isAnnual ? 'Category Distribution (Annual Projections)' : 'Subscription Category Distribution'}
                   </h3>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Interactive Recharts distribution breakdown across Entertainment, Software, Utilities & more
+                  {isAnnual 
+                    ? 'Interactive Recharts distribution breakdown of annualized subscription expenditure by category'
+                    : 'Interactive Recharts distribution breakdown across Entertainment, Software, Utilities & more'}
                 </p>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-mono shrink-0">
@@ -309,12 +381,16 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
               categories={metrics.categoryBreakdown}
               totalBurn={metrics.totalMonthlyBurn}
               subscriptions={subscriptions}
+              projectionMode={projectionMode}
+              onProjectionModeChange={setProjectionMode}
             />
           </div>
 
           <div className="pt-4 sm:pt-5 mt-4 sm:mt-5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
             <span>Largest Driver: <strong className="text-slate-800 dark:text-slate-200">{metrics.categoryBreakdown[0]?.category || 'None'}</strong></span>
-            <span className="font-mono">{metrics.categoryBreakdown[0]?.percentage.toFixed(1) || 0}% of monthly burn</span>
+            <span className="font-mono">
+              {metrics.categoryBreakdown[0]?.percentage.toFixed(1) || 0}% of {isAnnual ? 'annualized spend' : 'monthly burn'}
+            </span>
           </div>
         </div>
 

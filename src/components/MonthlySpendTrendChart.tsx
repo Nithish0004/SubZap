@@ -29,45 +29,61 @@ interface MonthlySpendTrendChartProps {
   subscriptions: Subscription[];
   simulatedCancelledIds?: Set<string>;
   targetBudget?: number;
+  projectionMode?: 'monthly' | 'annual';
+  onProjectionModeChange?: (mode: 'monthly' | 'annual') => void;
 }
 
 export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
   subscriptions,
   simulatedCancelledIds = new Set<string>(),
   targetBudget,
+  projectionMode = 'monthly',
+  onProjectionModeChange,
 }) => {
   const { formatBaseINR, getBreakdown } = useCurrency();
   const { theme } = useTheme();
   const [viewMode, setViewMode] = useState<'burn' | 'diff'>('burn');
   const [hoveredMonth, setHoveredMonth] = useState<string | null>(null);
 
+  const isAnnual = projectionMode === 'annual';
+  const multiplier = isAnnual ? 12 : 1;
   const hasSimulation = simulatedCancelledIds.size > 0;
 
   // Calculate the 6-month spending trend
   const summary = calculateMonthlySpendingTrend(subscriptions, simulatedCancelledIds);
   const { trend, currentBurn, sixMonthsAgoBurn, netDelta, netDeltaPercent, averageBurn } = summary;
 
-  // Recharts data format
+  // Effective values based on projectionMode
+  const effectiveCurrentBurn = currentBurn * multiplier;
+  const effectiveSixMonthsAgoBurn = sixMonthsAgoBurn * multiplier;
+  const effectiveNetDelta = netDelta * multiplier;
+  const effectiveAverageBurn = averageBurn * multiplier;
+  const effectiveTargetBudget = targetBudget ? targetBudget * multiplier : undefined;
+
+  // Recharts data format scaled by multiplier
   const chartData = trend.map((point) => ({
     name: point.label,
     fullLabel: point.fullLabel,
-    burn: point.totalBurn,
-    simulatedBurn: point.simulatedBurn,
-    diff: point.diffFromPrev,
+    burn: point.totalBurn * multiplier,
+    simulatedBurn: point.simulatedBurn * multiplier,
+    diff: point.diffFromPrev * multiplier,
     diffPercent: point.diffPercent,
     activeCount: point.activeCount,
-    savings: point.cumulativeSavings,
+    savings: point.cumulativeSavings * multiplier,
   }));
 
   const isIncrease = netDelta > 0;
   const isDecrease = netDelta < 0;
 
-  const latestMoM = trend[trend.length - 1]?.diffFromPrev || 0;
+  const latestMoM = (trend[trend.length - 1]?.diffFromPrev || 0) * multiplier;
   const latestMoMPct = trend[trend.length - 1]?.diffPercent || 0;
 
-  // Formatting helper for compact Y-axis tick values (e.g. ₹4k)
+  // Formatting helper for compact Y-axis tick values (e.g. ₹4k or ₹1.2L)
   const formatYAxis = (val: number) => {
     if (val === 0) return '₹0';
+    if (val >= 100000) {
+      return `₹${(val / 100000).toFixed(val % 100000 === 0 ? 0 : 1)}L`;
+    }
     if (val >= 1000) {
       return `₹${(val / 1000).toFixed(val % 1000 === 0 ? 0 : 1)}k`;
     }
@@ -81,9 +97,10 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
     const data = payload[0].payload;
     const isMoMUp = data.diff > 0;
     const isMoMDown = data.diff < 0;
+    const monthlyEquivalent = isAnnual ? data.burn / 12 : data.burn;
 
     return (
-      <div className="p-3.5 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-md text-xs min-w-[210px] space-y-2 pointer-events-none z-50">
+      <div className="p-3.5 rounded-xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-md text-xs min-w-[220px] space-y-2 pointer-events-none z-50">
         <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white">
             <Calendar className="w-3.5 h-3.5 text-indigo-500" />
@@ -96,22 +113,37 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
 
         <div className="space-y-1.5">
           <div className="flex items-baseline justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Total Monthly Burn:</span>
+            <span className="text-slate-500 dark:text-slate-400">
+              {isAnnual ? 'Projected Annual Run-Rate:' : 'Total Monthly Burn:'}
+            </span>
             <span className="font-mono font-extrabold text-slate-900 dark:text-white text-sm">
-              {formatBaseINR(data.burn)}
+              {formatBaseINR(data.burn)}{isAnnual ? '/yr' : ''}
             </span>
           </div>
 
           <div className="flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">USD Equivalent:</span>
+            <span className="text-slate-400">
+              {isAnnual ? 'Monthly Equivalent:' : 'USD Equivalent:'}
+            </span>
             <span className="font-mono text-slate-600 dark:text-slate-400">
-              ≈ {getBreakdown(data.burn).usd}
+              {isAnnual ? `${formatBaseINR(monthlyEquivalent)}/mo` : `≈ ${getBreakdown(data.burn).usd}`}
             </span>
           </div>
 
+          {isAnnual && (
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-slate-400">USD Annualized:</span>
+              <span className="font-mono text-slate-600 dark:text-slate-400">
+                ≈ {getBreakdown(data.burn).usd}
+              </span>
+            </div>
+          )}
+
           {/* MoM difference badge */}
           <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
-            <span className="text-slate-500 dark:text-slate-400">MoM Difference:</span>
+            <span className="text-slate-500 dark:text-slate-400">
+              {isAnnual ? 'MoM Annualized Delta:' : 'MoM Difference:'}
+            </span>
             <span
               className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-mono font-bold text-[11px] ${
                 isMoMUp
@@ -130,7 +162,7 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
             <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80 text-emerald-600 dark:text-emerald-400">
               <span className="flex items-center gap-1 font-medium">
                 <Sparkles className="w-3 h-3" />
-                Simulated Burn:
+                Simulated Run:
               </span>
               <span className="font-mono font-bold">
                 {formatBaseINR(data.simulatedBurn)} (-{formatBaseINR(data.savings)})
@@ -152,65 +184,102 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
               <Layers className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                Monthly Spending Trend (Last 6 Months)
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                  {isAnnual ? 'Annualized Spend Run-Rate Trend (Last 6 Months)' : 'Monthly Spending Trend (Last 6 Months)'}
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                  {isAnnual ? 'Annualized' : 'Monthly'}
+                </span>
+              </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Total recurring wallet burn trajectory and month-over-month variance
+                {isAnnual 
+                  ? 'Projected 365-day annual run-rate trajectory based on active subscriptions in each historical cycle'
+                  : 'Total recurring wallet burn trajectory and month-over-month variance'}
               </p>
             </div>
           </div>
         </div>
 
-        {/* View Switcher: Total Burn vs MoM Difference */}
-        <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={() => setViewMode('burn')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              viewMode === 'burn'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Total Burn Line
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('diff')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              viewMode === 'diff'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            MoM Delta (₹)
-          </button>
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+          {/* Quick Horizon Toggle if callback provided */}
+          {onProjectionModeChange && (
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+              <button
+                type="button"
+                onClick={() => onProjectionModeChange('monthly')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  !isAnnual
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                type="button"
+                onClick={() => onProjectionModeChange('annual')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  isAnnual
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                Annual
+              </button>
+            </div>
+          )}
+
+          {/* View Switcher: Total Burn vs MoM Difference */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+            <button
+              type="button"
+              onClick={() => setViewMode('burn')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                viewMode === 'burn'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              {isAnnual ? 'Annual Run-Rate' : 'Total Burn Line'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('diff')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                viewMode === 'diff'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              {isAnnual ? 'Annual Delta (₹)' : 'MoM Delta (₹)'}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* 4 Summary Metric Callout Tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
-        {/* Metric 1: Current Burn */}
+        {/* Metric 1: Current Burn / Run-Rate */}
         <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
-            Current Month Burn
+            {isAnnual ? 'Current Annual Run-Rate' : 'Current Month Burn'}
           </span>
           <div className="mt-1 flex items-baseline gap-1">
             <span className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
-              {formatBaseINR(currentBurn)}
+              {formatBaseINR(effectiveCurrentBurn)}
             </span>
-            <span className="text-[10px] text-slate-400 font-sans">/mo</span>
+            <span className="text-[10px] text-slate-400 font-sans">{isAnnual ? '/yr' : '/mo'}</span>
           </div>
           <span className="text-[11px] text-slate-400 font-mono block mt-0.5 truncate">
-            ≈ {getBreakdown(currentBurn).usd}
+            ≈ {getBreakdown(effectiveCurrentBurn).usd}
           </span>
         </div>
 
         {/* Metric 2: 6-Month Net Difference */}
         <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
-            6-Month Net Delta
+            {isAnnual ? '6-Mo Delta (Annualized)' : '6-Month Net Delta'}
           </span>
           <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
             <span className={`text-lg sm:text-xl font-extrabold font-mono tabular-nums ${
@@ -220,7 +289,7 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
                 ? 'text-emerald-600 dark:text-emerald-400' 
                 : 'text-slate-700 dark:text-slate-300'
             }`}>
-              {isIncrease ? '+' : ''}{formatBaseINR(netDelta)}
+              {isIncrease ? '+' : ''}{formatBaseINR(effectiveNetDelta)}
             </span>
             <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
               isIncrease 
@@ -234,14 +303,14 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
             </span>
           </div>
           <span className="text-[11px] text-slate-400 block mt-0.5 truncate">
-            vs 6 months ago ({formatBaseINR(sixMonthsAgoBurn)})
+            vs 6 months ago ({formatBaseINR(effectiveSixMonthsAgoBurn)})
           </span>
         </div>
 
         {/* Metric 3: Latest Month-Over-Month Variance */}
         <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
-            Latest MoM Change
+            {isAnnual ? 'Latest MoM Delta (Annual)' : 'Latest MoM Change'}
           </span>
           <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
             <span className={`text-lg sm:text-xl font-extrabold font-mono tabular-nums ${
@@ -271,13 +340,13 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
         {/* Metric 4: 6-Month Average Burn */}
         <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
-            6-Month Mean Burn
+            {isAnnual ? '6-Mo Mean Annual Spend' : '6-Month Mean Burn'}
           </span>
           <div className="mt-1 flex items-baseline gap-1">
             <span className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
-              {formatBaseINR(averageBurn)}
+              {formatBaseINR(effectiveAverageBurn)}
             </span>
-            <span className="text-[10px] text-slate-400 font-sans">/mo</span>
+            <span className="text-[10px] text-slate-400 font-sans">{isAnnual ? '/yr' : '/mo'}</span>
           </div>
           <span className="text-[11px] text-slate-400 block mt-0.5 truncate">
             Baseline mean outflow
@@ -355,12 +424,12 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
 
             {/* Reference line for 6-Month Average */}
             <ReferenceLine
-              y={averageBurn}
+              y={effectiveAverageBurn}
               stroke="#94A3B8"
               strokeDasharray="4 4"
               strokeOpacity={0.5}
               label={{
-                value: `Avg: ${formatYAxis(averageBurn)}`,
+                value: `Avg: ${formatYAxis(effectiveAverageBurn)}`,
                 position: 'right',
                 fill: '#94A3B8',
                 fontSize: 10,
@@ -369,13 +438,13 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
             />
 
             {/* Target Budget Reference Line if set */}
-            {targetBudget && targetBudget > 0 && (
+            {effectiveTargetBudget && effectiveTargetBudget > 0 && (
               <ReferenceLine
-                y={targetBudget}
+                y={effectiveTargetBudget}
                 stroke="#10B981"
                 strokeDasharray="3 3"
                 label={{
-                  value: `Budget: ${formatYAxis(targetBudget)}`,
+                  value: `Budget: ${formatYAxis(effectiveTargetBudget)}`,
                   position: 'insideTopLeft',
                   fill: '#10B981',
                   fontSize: 10,
@@ -389,7 +458,7 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="burn"
-                name="Total Monthly Burn"
+                name={isAnnual ? 'Annualized Run-Rate' : 'Total Monthly Burn'}
                 stroke="url(#burnLineGrad)"
                 strokeWidth={3}
                 dot={{
@@ -411,7 +480,7 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="diff"
-                name="MoM Difference"
+                name={isAnnual ? 'Annualized MoM Delta' : 'MoM Difference'}
                 stroke="url(#diffLineGrad)"
                 strokeWidth={3}
                 dot={{
@@ -436,7 +505,7 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="simulatedBurn"
-                name="Simulated Staged Burn"
+                name={isAnnual ? 'Simulated Annualized Spend' : 'Simulated Staged Burn'}
                 stroke="#10B981"
                 strokeWidth={2.5}
                 strokeDasharray="5 5"
@@ -463,11 +532,11 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
       <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
         <div className="flex items-center justify-between mb-2.5">
           <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-            6-Month Timeline Difference Matrix
+            6-Month Timeline Difference Matrix ({isAnnual ? 'Annualized Run-Rate' : 'Monthly Outflow'})
           </span>
           <span className="text-[11px] text-slate-400 flex items-center gap-1">
             <Info className="w-3 h-3" />
-            Shows total burn & variance at each month boundary
+            Shows total {isAnnual ? 'annualized rate' : 'burn'} & variance at each month boundary
           </span>
         </div>
 
@@ -475,8 +544,10 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
           {trend.map((point, idx) => {
             const isLatest = idx === trend.length - 1;
             const isBase = idx === 0;
-            const isPointUp = point.diffFromPrev > 0;
-            const isPointDown = point.diffFromPrev < 0;
+            const pointValue = point.totalBurn * multiplier;
+            const pointDiff = point.diffFromPrev * multiplier;
+            const isPointUp = pointDiff > 0;
+            const isPointDown = pointDiff < 0;
             const isSelected = hoveredMonth === point.label;
 
             return (
@@ -502,7 +573,7 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
                 </div>
 
                 <div className="text-sm font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
-                  {formatBaseINR(point.totalBurn)}
+                  {formatBaseINR(pointValue)}{isAnnual ? <span className="text-[10px] font-normal text-slate-400 ml-0.5">/yr</span> : ''}
                 </div>
 
                 <div className="mt-1 flex items-center justify-between text-[10px] font-mono">
@@ -518,7 +589,7 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
                           : 'text-slate-500'
                       }`}
                     >
-                      {isPointUp ? '+' : ''}{formatBaseINR(point.diffFromPrev)}
+                      {isPointUp ? '+' : ''}{formatBaseINR(pointDiff)}
                     </span>
                   )}
 
@@ -534,3 +605,4 @@ export const MonthlySpendTrendChart: React.FC<MonthlySpendTrendChartProps> = ({
     </div>
   );
 };
+
