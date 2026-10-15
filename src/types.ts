@@ -127,4 +127,49 @@ export interface SpendingTrendSummary {
 
 export type AnalyticsMetrics = FinancialMetrics;
 
+export interface HealthScorePillar {
+  name: string;
+  score: number;
+  maxScore: number;
+  label: string;
+  percentage: number;
+  status: 'optimal' | 'good' | 'warning' | 'critical';
+  description: string;
+}
+
+export interface HealthScoreRecommendation {
+  id: string;
+  type: 'positive' | 'warning' | 'critical' | 'action';
+  title: string;
+  description: string;
+  impact: string;
+  actionType?: 'pause' | 'cancel' | 'edit_budget' | 'view_trials';
+  targetSubscriptionId?: string;
+  targetSubscriptionName?: string;
+}
+
+export interface SubscriptionHealthScore {
+  score: number; // 0 to 100
+  simulatedScore?: number; // projected score if staged cancellations are applied
+  scoreDelta?: number; // difference in score
+  grade: 'A+' | 'A' | 'B' | 'C' | 'D' | 'F';
+  status: 'Optimal' | 'Healthy' | 'Moderate' | 'At Risk' | 'Critical Bleed';
+  statusColor: string;
+  statusBgColor: string;
+  statusBorderColor: string;
+  spendToBudgetRatio: number; // 0 to >1
+  spendToBudgetPercentage: number; // e.g. 85
+  statedBudget: number;
+  actualSpend: number;
+  headroomOrDeficit: number; // positive = headroom, negative = deficit
+  isOverBudget: boolean;
+  pillars: {
+    budgetAdherence: HealthScorePillar;
+    expenseDrain: HealthScorePillar;
+    renewalSafety: HealthScorePillar;
+    portfolioEfficiency: HealthScorePillar;
+  };
+  recommendations: HealthScoreRecommendation[];
+}
+
 export * from './catalog/types';

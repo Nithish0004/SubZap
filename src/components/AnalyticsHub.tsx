@@ -15,7 +15,8 @@ import {
   Zap,
   Wallet,
   PieChart as PieChartIcon,
-  CalendarRange
+  CalendarRange,
+  HeartPulse
 } from 'lucide-react';
 import { AnalyticsMetrics, Subscription } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
@@ -25,7 +26,8 @@ import { BrandLogo } from './BrandLogo';
 import { MultiCurrencyTooltip } from './MultiCurrencyTooltip';
 import { BudgetLimitGauge } from './BudgetLimitGauge';
 import { MonthlySpendTrendChart } from './MonthlySpendTrendChart';
-import { getCountdownBadge, getDaysUntil } from '../utils/calculations';
+import { SubscriptionHealthScoreCard } from './SubscriptionHealthScoreCard';
+import { getCountdownBadge, getDaysUntil, calculateSubscriptionHealthScore } from '../utils/calculations';
 
 interface AnalyticsHubProps {
   metrics: AnalyticsMetrics;
@@ -77,6 +79,15 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
   const effectiveLivingDrainPct = isAnnual ? annualLivingExpenseDrainPct : livingExpenseDrainPct;
   const isHighLivingDrain = parseFloat(effectiveLivingDrainPct) > 12;
 
+  // Calculate Subscription Health Score
+  const healthScore = calculateSubscriptionHealthScore({
+    subscriptions,
+    targetMonthlyBudget: userProfile?.targetMonthlyBudget || 5000,
+    averageMonthlyExpense: livingExpense,
+    simulatedCancelledIds,
+    projectionMode,
+  });
+
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300 w-full min-w-0 max-w-full">
       {/* Top Welcome / Mission Bar */}
@@ -92,6 +103,13 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
                 {userProfile.financialGoal}
               </span>
             )}
+            <a
+              href="#subscription-health-score"
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30 shrink-0 hover:opacity-80 transition-opacity"
+            >
+              <HeartPulse className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 animate-pulse" />
+              <span>Score: {healthScore.score}/100 ({healthScore.grade})</span>
+            </a>
             <span className="text-xs text-slate-500 dark:text-slate-400 font-mono hidden sm:inline">Zero-Knowledge AES-256</span>
           </div>
           <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight truncate">
@@ -173,6 +191,15 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Subscription Health Score Section */}
+      <SubscriptionHealthScoreCard
+        healthScore={healthScore}
+        subscriptions={subscriptions}
+        projectionMode={projectionMode}
+        onPauseSubscription={onTogglePause}
+        onEditBudgetClick={() => setNeedsOnboarding(true)}
+      />
 
       {/* Personalized Budget Limit Gauge */}
       <BudgetLimitGauge 
