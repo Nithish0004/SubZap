@@ -53,6 +53,8 @@ import { calculateMonthlySpendingTrend, getNormalizedMonthlyCost } from '../util
 import { 
   generateSubscriptionsCSV, 
   generateEncryptedSubscriptionsCSV,
+  generateSubscriptionsJSON,
+  generateEncryptedSubscriptionsJSON,
   generateEncryptedVaultBackup, 
   generateSpendingTrendCSV,
   triggerDownload 
@@ -82,7 +84,8 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
 
-  // CSV Export Configuration State (Decrypted vs Encrypted)
+  // Export Configuration State (Format & Security mode)
+  const [exportFileType, setExportFileType] = useState<'csv' | 'json'>('csv');
   const [csvExportFormat, setCsvExportFormat] = useState<'decrypted' | 'encrypted'>('decrypted');
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
 
@@ -216,6 +219,47 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
     } catch (err) {
       console.error('Error exporting CSV:', err);
       setDownloadStatus('Failed to generate CSV export');
+      setTimeout(() => setDownloadStatus(null), 3500);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Download JSON Data (Supports both Decrypted plain JSON and AES-256 Encrypted JSON)
+  const handleDownloadJSON = async (mode: 'decrypted' | 'encrypted' = csvExportFormat) => {
+    setIsExporting(true);
+    try {
+      const dateSlug = new Date().toISOString().split('T')[0];
+      if (mode === 'encrypted') {
+        const json = await generateEncryptedSubscriptionsJSON(subscriptions, userSecretKey, {
+          userId: user?.uid,
+          userEmail: user?.email || user?.phoneNumber,
+          profile: userProfile,
+        });
+        triggerDownload(
+          json,
+          `subzap_subscriptions_encrypted_${dateSlug}.json`,
+          'application/json'
+        );
+        setDownloadStatus('Encrypted JSON downloaded (zero-knowledge encrypted backup)');
+      } else {
+        const json = generateSubscriptionsJSON(subscriptions, {
+          userId: user?.uid,
+          userEmail: user?.email || user?.phoneNumber,
+          profile: userProfile,
+        });
+        triggerDownload(
+          json,
+          `subzap_subscriptions_decrypted_${dateSlug}.json`,
+          'application/json'
+        );
+        setDownloadStatus('Decrypted JSON list data downloaded for personal records');
+      }
+      setIsCsvModalOpen(false);
+      setTimeout(() => setDownloadStatus(null), 3500);
+    } catch (err) {
+      console.error('Error exporting JSON:', err);
+      setDownloadStatus('Failed to generate JSON export');
       setTimeout(() => setDownloadStatus(null), 3500);
     } finally {
       setIsExporting(false);
@@ -358,11 +402,11 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                 id="header-export-csv-btn"
                 type="button"
                 onClick={() => setIsCsvModalOpen(true)}
-                title="Export current subscriptions as an encrypted or decrypted CSV file"
+                title="Export current subscriptions as an encrypted or decrypted JSON or CSV file"
                 className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300/80 dark:border-emerald-800/80 rounded-lg transition-colors cursor-pointer"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Export to CSV</span>
+                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Export (JSON / CSV)</span>
                 <ChevronDown className="w-3 h-3 text-emerald-600 dark:text-emerald-400 opacity-60" />
               </button>
 
@@ -1436,11 +1480,11 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
               id="footer-export-csv-budget-btn"
               type="button"
               onClick={() => setIsCsvModalOpen(true)}
-              title="Export current subscription data as an encrypted or decrypted CSV file"
+              title="Export current subscription data as an encrypted or decrypted JSON or CSV file"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 font-semibold cursor-pointer transition-colors"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Export to CSV</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>Export (JSON / CSV)</span>
             </button>
 
             <button
@@ -1463,7 +1507,7 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
           </div>
         </div>
 
-        {/* Export to CSV Modal Dialog Overlay */}
+        {/* Export Modal Dialog Overlay (Supports JSON and CSV in Encrypted or Decrypted state) */}
         {isCsvModalOpen && (
           <div 
             id="export-to-csv-modal-overlay"
@@ -1479,78 +1523,123 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
               <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                    <FileSpreadsheet className="w-4 h-4" />
+                    <Download className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Export to CSV</h4>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Download your subscription data as an encrypted or decrypted CSV file</p>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Export Subscription Data</h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Download subscription data as an encrypted or decrypted JSON or CSV file</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setIsCsvModalOpen(false)}
                   className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                  aria-label="Close CSV Export"
+                  aria-label="Close Export"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Selection Options */}
-              <div className="space-y-2.5">
-                {/* 1. Decrypted CSV Option */}
-                <div 
-                  id="csv-modal-option-decrypted"
-                  onClick={() => setCsvExportFormat('decrypted')}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    csvExportFormat === 'decrypted'
-                      ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-1 ring-emerald-500'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                        <Unlock className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">
-                        Decrypted CSV (Plain Spreadsheet)
-                      </span>
+              {/* 1. Format Choice Tabs: CSV vs JSON */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Select File Format
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExportFileType('csv')}
+                    className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all cursor-pointer ${
+                      exportFileType === 'csv'
+                        ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500 font-bold'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <div className="text-left">
+                      <span className="text-xs block">CSV Spreadsheet (.csv)</span>
+                      <span className="text-[10px] text-slate-400 block font-normal">Excel, Sheets, YNAB</span>
                     </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/80 dark:text-emerald-200">
-                      Excel / Sheets / YNAB
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
-                    Readable plaintext values for subscription names, costs, normalized monthly & annual burn, renewal dates, and notes. Perfect for personal budgeting in Excel, Google Sheets, Numbers, or Notion.
-                  </p>
-                </div>
+                  </button>
 
-                {/* 2. Encrypted CSV Option */}
-                <div 
-                  id="csv-modal-option-encrypted"
-                  onClick={() => setCsvExportFormat('encrypted')}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    csvExportFormat === 'encrypted'
-                      ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 ring-1 ring-indigo-500'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                        <Lock className="w-3.5 h-3.5" />
+                  <button
+                    type="button"
+                    onClick={() => setExportFileType('json')}
+                    className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all cursor-pointer ${
+                      exportFileType === 'json'
+                        ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 ring-1 ring-indigo-500 font-bold'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <div className="text-left">
+                      <span className="text-xs block">JSON File (.json)</span>
+                      <span className="text-[10px] text-slate-400 block font-normal">Object Snapshot, Cloud Vault</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Security Mode Choice: Decrypted vs Encrypted */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Select Security Mode
+                </label>
+                <div className="space-y-2">
+                  {/* Decrypted Option */}
+                  <div 
+                    id="csv-modal-option-decrypted"
+                    onClick={() => setCsvExportFormat('decrypted')}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                      csvExportFormat === 'decrypted'
+                        ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-1 ring-emerald-500'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                          <Unlock className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">
+                          Decrypted (Plaintext Current List Data)
+                        </span>
                       </div>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">
-                        Encrypted CSV (AES-256 Zero-Knowledge)
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/80 dark:text-emerald-200">
+                        Human Readable
                       </span>
                     </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/80 dark:text-indigo-200">
-                      Zero-Knowledge
-                    </span>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
+                      Readable plaintext values for subscription names, costs, normalized monthly & annual burn, renewal dates, and notes. Perfect for personal budgeting in Excel, Google Sheets, or Notion.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
-                    Sensitive columns (Name, Cost, Normalized Costs, Renewal Dates, Trial Date, Notes, URL) are encrypted with AES-GCM-256 using your Vault Secret Key before CSV generation. Safe for cold storage or untrusted cloud sync drives.
-                  </p>
+
+                  {/* Encrypted Option */}
+                  <div 
+                    id="csv-modal-option-encrypted"
+                    onClick={() => setCsvExportFormat('encrypted')}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                      csvExportFormat === 'encrypted'
+                        ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 ring-1 ring-indigo-500'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                          <Lock className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">
+                          Encrypted (AES-256 Zero-Knowledge State)
+                        </span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/80 dark:text-indigo-200">
+                        Zero-Knowledge
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
+                      Sensitive columns and records are encrypted with AES-GCM-256 using your Vault Secret Key before export generation. Fully shielded for cold storage or public cloud drive sync.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -1561,12 +1650,12 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                   <span>Target: <strong>{subscriptions.length} subscriptions</strong></span>
                 </div>
                 <span className="font-mono text-slate-400 text-[10px]">
-                  {csvExportFormat === 'decrypted' ? 'RFC-4180 Decrypted' : 'AES-GCM-256 Cipher'}
+                  {csvExportFormat === 'decrypted' ? 'Decrypted Output' : 'AES-GCM-256 Cipher'} ({exportFileType.toUpperCase()})
                 </span>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsCsvModalOpen(false)}
@@ -1574,27 +1663,54 @@ export const DataVaultModal: React.FC<DataVaultModalProps> = ({
                 >
                   Cancel
                 </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    id="modal-download-decrypted-csv-btn"
-                    type="button"
-                    onClick={() => handleDownloadCSV('decrypted')}
-                    disabled={isExporting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    <Unlock className="w-3.5 h-3.5" />
-                    <span>Download Decrypted CSV</span>
-                  </button>
-                  <button
-                    id="modal-download-encrypted-csv-btn"
-                    type="button"
-                    onClick={() => handleDownloadCSV('encrypted')}
-                    disabled={isExporting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>Download Encrypted CSV</span>
-                  </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {exportFileType === 'csv' ? (
+                    <>
+                      <button
+                        id="modal-download-decrypted-csv-btn"
+                        type="button"
+                        onClick={() => handleDownloadCSV('decrypted')}
+                        disabled={isExporting}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <Unlock className="w-3.5 h-3.5" />
+                        <span>Download Decrypted CSV</span>
+                      </button>
+                      <button
+                        id="modal-download-encrypted-csv-btn"
+                        type="button"
+                        onClick={() => handleDownloadCSV('encrypted')}
+                        disabled={isExporting}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Download Encrypted CSV</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        id="modal-download-decrypted-json-btn"
+                        type="button"
+                        onClick={() => handleDownloadJSON('decrypted')}
+                        disabled={isExporting}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <Unlock className="w-3.5 h-3.5" />
+                        <span>Download Decrypted JSON</span>
+                      </button>
+                      <button
+                        id="modal-download-encrypted-json-btn"
+                        type="button"
+                        onClick={() => handleDownloadJSON('encrypted')}
+                        disabled={isExporting}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Download Encrypted JSON</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

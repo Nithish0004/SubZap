@@ -180,6 +180,123 @@ export async function generateEncryptedSubscriptionsCSV(
 }
 
 /**
+ * Generates a clean human-readable JSON export of current subscriptions list data
+ * Formatted for personal backup, developer snapshots, or third-party budgeting migration.
+ */
+export function generateSubscriptionsJSON(
+  subscriptions: Subscription[],
+  metadata?: {
+    userId?: string;
+    userEmail?: string;
+    profile?: any;
+    filterApplied?: string;
+  }
+): string {
+  const dateStr = new Date().toISOString();
+
+  const exportPackage = {
+    vaultFormat: 'subzap-subscription-export-v1',
+    mode: 'decrypted',
+    exportedAt: dateStr,
+    totalSubscriptions: subscriptions.length,
+    filterScope: metadata?.filterApplied || 'all',
+    user: metadata?.userId
+      ? {
+          uid: metadata.userId,
+          email: metadata.userEmail,
+        }
+      : undefined,
+    profile: metadata?.profile
+      ? {
+          fullName: metadata.profile.fullName,
+          targetMonthlyBudget: metadata.profile.targetMonthlyBudget,
+          averageMonthlyExpense: metadata.profile.averageMonthlyExpense,
+          financialGoal: metadata.profile.financialGoal,
+        }
+      : undefined,
+    subscriptions: subscriptions.map((sub) => {
+      const monthlyNormalized = Math.round(getNormalizedMonthlyCost(sub.cost, sub.billingCycle) * 100) / 100;
+      const annualNormalized = Math.round(getNormalizedAnnualCost(sub.cost, sub.billingCycle) * 100) / 100;
+
+      return {
+        id: sub.id,
+        name: sub.name,
+        cost: sub.cost,
+        currency: sub.currency,
+        billingCycle: sub.billingCycle,
+        normalizedMonthlyCost: monthlyNormalized,
+        projectedAnnualCost: annualNormalized,
+        category: sub.category,
+        isPaused: sub.isPaused,
+        status: sub.isPaused ? 'Paused' : 'Active',
+        nextRenewalDate: sub.nextRenewalDate,
+        trialExpiryDate: sub.trialExpiryDate || null,
+        domain: sub.domain || null,
+        previousCost: sub.previousCost !== undefined ? sub.previousCost : null,
+        notes: sub.notes || null,
+        cancellationUrl: sub.cancellationUrl || null,
+        createdAt: sub.createdAt || null,
+        updatedAt: sub.updatedAt || null,
+      };
+    }),
+  };
+
+  return JSON.stringify(exportPackage, null, 2);
+}
+
+/**
+ * Generates an AES-256 GCM encrypted JSON export of subscriptions,
+ * maintaining the encrypted state for security so files can be safely stored on public drives.
+ */
+export async function generateEncryptedSubscriptionsJSON(
+  subscriptions: Subscription[],
+  secretKey: string,
+  metadata?: {
+    userId?: string;
+    userEmail?: string;
+    profile?: any;
+    filterApplied?: string;
+  }
+): Promise<string> {
+  const dateStr = new Date().toISOString();
+
+  // Encrypt individual subscription records using Web Crypto AES-GCM-256
+  const encryptedRecords = await Promise.all(
+    subscriptions.map((sub) =>
+      encryptSubscription(sub, secretKey, metadata?.userId || 'vault-export')
+    )
+  );
+
+  // Encrypt the full raw payload for cold restore
+  const rawPayload = JSON.stringify({
+    exportedAt: dateStr,
+    totalSubscriptions: subscriptions.length,
+    profile: metadata?.profile,
+    subscriptions,
+  });
+
+  const fullCiphertext = await encryptField(rawPayload, secretKey);
+
+  const backupPackage = {
+    vaultFormat: 'subzap-subscription-export-v1',
+    mode: 'encrypted',
+    cipherAlgorithm: 'AES-GCM-256-PBKDF2',
+    iterations: 100000,
+    exportedAt: dateStr,
+    totalSubscriptions: subscriptions.length,
+    filterScope: metadata?.filterApplied || 'all',
+    userUid: metadata?.userId || 'guest-session',
+    userEmail: metadata?.userEmail || undefined,
+    encryptedRecords,
+    encryptedPayload: fullCiphertext,
+    securityNotice:
+      'This file contains AES-256 client-side encrypted subscription records. Sensitive fields (Name, Cost, Dates, Notes) are encrypted with your Zero-Knowledge Vault Secret Key and unreadable without it.',
+  };
+
+  return JSON.stringify(backupPackage, null, 2);
+}
+
+/**
  * Generates an AES-256 GCM encrypted JSON vault backup file for personal record-keeping
  */
 export async function generateEncryptedVaultBackup(
@@ -191,39 +308,7 @@ export async function generateEncryptedVaultBackup(
     profile?: any;
   }
 ): Promise<string> {
-  const dateStr = new Date().toISOString();
-
-  // 1. Encrypt individual subscription records using Web Crypto AES-GCM
-  const encryptedRecords = await Promise.all(
-    subscriptions.map((sub) =>
-      encryptSubscription(sub, secretKey, metadata?.userId || 'vault-export')
-    )
-  );
-
-  // 2. Encrypt the complete snapshot payload
-  const rawPayload = JSON.stringify({
-    exportedAt: dateStr,
-    totalSubscriptions: subscriptions.length,
-    profile: metadata?.profile,
-    subscriptions,
-  });
-
-  const fullCiphertext = await encryptField(rawPayload, secretKey);
-
-  const backupPackage = {
-    vaultFormat: 'subzap-encrypted-backup-v1',
-    cipherAlgorithm: 'AES-GCM-256-PBKDF2',
-    exportedAt: dateStr,
-    totalSubscriptions: subscriptions.length,
-    userUid: metadata?.userId || 'guest-session',
-    userEmail: metadata?.userEmail || undefined,
-    encryptedRecords,
-    encryptedPayload: fullCiphertext,
-    instructions:
-      'This file contains AES-256 client-side encrypted subscription records. It can only be decrypted with your Zero-Knowledge Vault Secret Key.',
-  };
-
-  return JSON.stringify(backupPackage, null, 2);
+  return generateEncryptedSubscriptionsJSON(subscriptions, secretKey, metadata);
 }
 
 /**

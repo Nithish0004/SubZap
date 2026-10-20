@@ -20,7 +20,8 @@ import {
   X,
   Calendar,
   Tag,
-  RotateCcw
+  RotateCcw,
+  Download
 } from 'lucide-react';
 import { BillingCycle, Subscription, SubscriptionCategory } from '../types';
 import { CATEGORIES, CATEGORY_COLORS, getCountdownBadge, getDaysUntil, getNormalizedMonthlyCost } from '../utils/calculations';
@@ -28,6 +29,7 @@ import { useCurrency } from '../context/CurrencyContext';
 import { BrandLogo } from './BrandLogo';
 import { MultiCurrencyTooltip } from './MultiCurrencyTooltip';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+import { ExportSubscriptionsModal } from './ExportSubscriptionsModal';
 
 interface SubscriptionManagerProps {
   subscriptions: Subscription[];
@@ -62,6 +64,9 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
 
   // Intercept immediate delete with Delete Confirmation Dialog
   const [pendingDeleteSub, setPendingDeleteSub] = useState<Subscription | null>(null);
+
+  // Export Subscriptions Modal State
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const { formatBaseINR } = useCurrency();
 
@@ -241,6 +246,18 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
                 <span>Reset Filters</span>
               </button>
             )}
+
+            {/* Export Subscriptions Button */}
+            <button
+              id="sub-export-data-btn"
+              type="button"
+              onClick={() => setIsExportModalOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-2xs transition-all cursor-pointer shrink-0"
+              title="Export subscription data to downloadable JSON or CSV (Encrypted or Decrypted)"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Export</span>
+            </button>
           </div>
 
           {/* Bottom Row: Filter Dropdowns */}
@@ -423,15 +440,28 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
             )}
           </div>
 
-          {isFiltered && (
+          <div className="flex items-center gap-2">
             <button
+              id="sub-export-view-btn"
               type="button"
-              onClick={handleResetFilters}
-              className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-[11px] cursor-pointer"
+              onClick={() => setIsExportModalOpen(true)}
+              className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 cursor-pointer transition-colors shadow-2xs"
+              title="Export subscriptions as JSON or CSV"
             >
-              Clear all filters
+              <Download className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+              <span>Export {isFiltered ? `View (${filteredSubscriptions.length})` : 'All'}</span>
             </button>
-          )}
+
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-[11px] cursor-pointer"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -934,6 +964,23 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
         itemName={pendingDeleteSub?.name || ''}
         onCancel={() => setPendingDeleteSub(null)}
         onConfirm={confirmPendingDelete}
+      />
+
+      {/* Export Subscriptions Modal (JSON or CSV in Encrypted or Decrypted state) */}
+      <ExportSubscriptionsModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        subscriptions={subscriptions}
+        filteredSubscriptions={filteredSubscriptions}
+        filterLabel={
+          searchQuery
+            ? `Search "${searchQuery}"`
+            : categoryFilter !== 'all'
+            ? categoryFilter
+            : statusFilter !== 'all'
+            ? statusFilter
+            : undefined
+        }
       />
     </div>
   );

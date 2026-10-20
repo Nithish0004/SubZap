@@ -19,7 +19,8 @@ import {
   Menu,
   X,
   Target,
-  Laptop
+  Laptop,
+  Download
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -318,6 +319,18 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
 
                   <button
+                    id="header-dropdown-export-btn"
+                    onClick={() => {
+                      setShowUserDropdown(false);
+                      onOpenDataVault?.();
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer font-medium"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Export Data (JSON / CSV)</span>
+                  </button>
+
+                  <button
                     onClick={() => {
                       setShowUserDropdown(false);
                       onResetData();
@@ -539,16 +552,30 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Actions Grid */}
             <div className="grid grid-cols-2 gap-2 text-xs">
               {onOpenDataVault && (
-                <button
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    onOpenDataVault();
-                  }}
-                  className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-medium text-left"
-                >
-                  <Database className="w-4 h-4 text-indigo-500 shrink-0" />
-                  <span className="truncate">Cloud Vault</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      onOpenDataVault();
+                    }}
+                    className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-medium text-left"
+                  >
+                    <Database className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span className="truncate">Cloud Vault</span>
+                  </button>
+
+                  <button
+                    id="mobile-drawer-export-btn"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      onOpenDataVault();
+                    }}
+                    className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200/80 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-medium text-left"
+                  >
+                    <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="truncate">Export Data</span>
+                  </button>
+                </>
               )}
 
               <button
@@ -556,10 +583,10 @@ export const Header: React.FC<HeaderProps> = ({
                   setShowMobileMenu(false);
                   onResetData();
                 }}
-                className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-medium text-left"
+                className={`flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-medium text-left ${onOpenDataVault ? 'col-span-2' : ''}`}
               >
                 <RotateCcw className="w-4 h-4 text-indigo-500 shrink-0" />
-                <span className="truncate">Seed Data</span>
+                <span className="truncate">Seed Demo Data</span>
               </button>
 
               <button
