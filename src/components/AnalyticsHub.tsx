@@ -16,7 +16,9 @@ import {
   Wallet,
   PieChart as PieChartIcon,
   CalendarRange,
-  HeartPulse
+  HeartPulse,
+  BarChart3,
+  TrendingUp
 } from 'lucide-react';
 import { AnalyticsMetrics, Subscription } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
@@ -26,6 +28,7 @@ import { BrandLogo } from './BrandLogo';
 import { MultiCurrencyTooltip } from './MultiCurrencyTooltip';
 import { BudgetLimitGauge } from './BudgetLimitGauge';
 import { MonthlySpendTrendChart } from './MonthlySpendTrendChart';
+import { MonthlySpendBarChart } from './MonthlySpendBarChart';
 import { SubscriptionHealthScoreCard } from './SubscriptionHealthScoreCard';
 import { getCountdownBadge, getDaysUntil, calculateSubscriptionHealthScore } from '../utils/calculations';
 
@@ -51,6 +54,7 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
   const { formatBaseINR, getBreakdown } = useCurrency();
   const { userProfile, setNeedsOnboarding } = useAuth();
   const [projectionMode, setProjectionMode] = useState<'monthly' | 'annual'>('monthly');
+  const [trendChartType, setTrendChartType] = useState<'bar' | 'line'>('bar');
 
   const isAnnual = projectionMode === 'annual';
 
@@ -371,14 +375,66 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
         </div>
       </div>
 
-      {/* Monthly / Annual Spend Trend Line Chart */}
-      <MonthlySpendTrendChart
-        subscriptions={subscriptions}
-        simulatedCancelledIds={simulatedCancelledIds}
-        targetBudget={userProfile?.targetMonthlyBudget}
-        projectionMode={projectionMode}
-        onProjectionModeChange={setProjectionMode}
-      />
+      {/* 6-Month Spending Trend Visualization (Recharts Bar Chart & Line Trend) */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              6-Month Spending Analysis
+            </span>
+            <span className="hidden sm:inline-block text-xs text-slate-400">•</span>
+            <span className="hidden sm:inline-block text-xs text-slate-500 dark:text-slate-400">
+              Recharts Interactive Visualization
+            </span>
+          </div>
+
+          {/* Toggle between Recharts Bar Chart and Line Trend */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setTrendChartType('bar')}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                trendChartType === 'bar'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Bar Chart</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTrendChartType('line')}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                trendChartType === 'line'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Line Trend</span>
+            </button>
+          </div>
+        </div>
+
+        {trendChartType === 'bar' ? (
+          <MonthlySpendBarChart
+            subscriptions={subscriptions}
+            simulatedCancelledIds={simulatedCancelledIds}
+            targetBudget={userProfile?.targetMonthlyBudget}
+            projectionMode={projectionMode}
+            onProjectionModeChange={setProjectionMode}
+          />
+        ) : (
+          <MonthlySpendTrendChart
+            subscriptions={subscriptions}
+            simulatedCancelledIds={simulatedCancelledIds}
+            targetBudget={userProfile?.targetMonthlyBudget}
+            projectionMode={projectionMode}
+            onProjectionModeChange={setProjectionMode}
+          />
+        )}
+      </div>
 
       {/* Main Grid: Category Donut Chart & Renewals within 7 Days */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 w-full min-w-0">
