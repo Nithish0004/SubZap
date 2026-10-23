@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, 
   Filter, 
@@ -44,6 +44,27 @@ interface SubscriptionManagerProps {
 
 type SortField = 'cost' | 'renewalDate' | 'name' | 'monthlyCost';
 type SortOrder = 'asc' | 'desc';
+type SearchScope = 'all' | 'name' | 'category';
+
+// Helper to highlight matching text in search results
+const highlightMatch = (text: string, query: string) => {
+  if (!query.trim()) return text;
+  const escaped = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.trim().toLowerCase() ? (
+          <mark key={i} className="bg-indigo-100 dark:bg-indigo-950/90 text-indigo-700 dark:text-indigo-300 font-semibold px-0.5 rounded">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+};
 
 export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
   subscriptions,
@@ -56,11 +77,13 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
   onClearSimulation,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchScope, setSearchScope] = useState<SearchScope>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [billingCycleFilter, setBillingCycleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused' | 'trial' | 'expiring_soon' | 'price_hike'>('all');
   const [sortField, setSortField] = useState<SortField>('renewalDate');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Intercept immediate delete with Delete Confirmation Dialog
   const [pendingDeleteSub, setPendingDeleteSub] = useState<Subscription | null>(null);
@@ -115,6 +138,29 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
     return { active, paused, trial, expiringSoon, priceHike };
   }, [subscriptions]);
 
+  // Global keyboard shortcut to focus search input bar (/ or Cmd+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT';
+
+      if (e.key === 'Escape' && searchQuery) {
+        setSearchQuery('');
+        searchInputRef.current?.blur();
+        return;
+      }
+
+      if ((e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) && !isInput) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchQuery]);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -126,6 +172,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
 
   const isFiltered = Boolean(
     searchQuery.trim() !== '' ||
+    searchScope !== 'all' ||
     categoryFilter !== 'all' ||
     billingCycleFilter !== 'all' ||
     statusFilter !== 'all'
@@ -133,6 +180,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
 
   const handleResetFilters = () => {
     setSearchQuery('');
+    setSearchScope('all');
     setCategoryFilter('all');
     setBillingCycleFilter('all');
     setStatusFilter('all');
@@ -144,14 +192,22 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
 
     return subscriptions
       .filter((sub) => {
-        // Search query: matches name, category, notes, billing cycle, or domain
+        // Search query: filter by name or category based on searchScope
         if (q) {
-          const matchesSearch =
-            sub.name.toLowerCase().includes(q) ||
-            sub.category.toLowerCase().includes(q) ||
-            sub.billingCycle.toLowerCase().includes(q) ||
-            (sub.domain && sub.domain.toLowerCase().includes(q)) ||
-            (sub.notes && sub.notes.toLowerCase().includes(q));
+          let matchesSearch = false;
+          if (searchScope === 'name') {
+            matchesSearch = sub.name.toLowerCase().includes(q);
+          } else if (searchScope === 'category') {
+            matchesSearch = sub.category.toLowerCase().includes(q);
+          } else {
+            // 'all': matches name or category (plus domain/notes as fallback)
+            matchesSearch =
+              sub.name.toLowerCase().includes(q) ||
+              sub.category.toLowerCase().includes(q) ||
+              Boolean(sub.domain && sub.domain.toLowerCase().includes(q)) ||
+              sub.billingCycle.toLowerCase().includes(q) ||
+              Boolean(sub.notes && sub.notes.toLowerCase().includes(q));
+          }
 
           if (!matchesSearch) return false;
         }
@@ -193,7 +249,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
         }
         return sortOrder === 'asc' ? diff : -diff;
       });
-  }, [subscriptions, searchQuery, categoryFilter, billingCycleFilter, statusFilter, sortField, sortOrder]);
+  }, [subscriptions, searchQuery, searchScope, categoryFilter, billingCycleFilter, statusFilter, sortField, sortOrder]);
 
   const confirmPendingDelete = () => {
     if (pendingDeleteSub) {
@@ -207,57 +263,177 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
       {/* Search & Filter Header Bar */}
       <div className="space-y-3 w-full min-w-0">
         <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm w-full min-w-0 space-y-3.5">
-          {/* Top Row: Search Input + Quick Reset */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
-            {/* Search Input */}
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <input
-                id="sub-search-input"
-                type="text"
-                placeholder="Search subscriptions by name, category, billing cycle, domain..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
-              />
-              {searchQuery && (
+          {/* Top Search Input Bar & Quick Filters */}
+          <div className="space-y-3 w-full">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full">
+              {/* Search Input Bar */}
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500 pointer-events-none" />
+                <input
+                  ref={searchInputRef}
+                  id="sub-search-input"
+                  type="text"
+                  placeholder={
+                    searchScope === 'name'
+                      ? 'Filter active subscriptions by name (e.g. Netflix, Spotify)...'
+                      : searchScope === 'category'
+                      ? 'Filter active subscriptions by category (e.g. Entertainment, Software)...'
+                      : 'Search subscriptions by name or category...'
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-24 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors shadow-2xs"
+                  aria-label="Search subscriptions by name or category"
+                />
+
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-md transition-colors cursor-pointer"
+                      title="Clear search query (Esc)"
+                      aria-label="Clear search query"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium text-slate-400 dark:text-slate-500 bg-slate-200/60 dark:bg-slate-700/60 border border-slate-300/60 dark:border-slate-600/60">
+                      /
+                    </span>
+                  )}
+                  {searchQuery && (
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/80">
+                      {filteredSubscriptions.length}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Search Scope Selector: All | Name | Category */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800/90 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shrink-0 self-start sm:self-auto">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-md transition-colors cursor-pointer"
-                  title="Clear search query"
-                  aria-label="Clear search query"
+                  onClick={() => setSearchScope('all')}
+                  className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    searchScope === 'all'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="Search in both Name and Category"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchScope('name')}
+                  className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    searchScope === 'name'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="Filter strictly by subscription Name"
+                >
+                  Name
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchScope('category')}
+                  className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    searchScope === 'category'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="Filter strictly by Category"
+                >
+                  Category
+                </button>
+              </div>
+
+              {/* Quick "Active Only" Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setStatusFilter((prev) => (prev === 'active' ? 'all' : 'active'))}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shrink-0 ${
+                  statusFilter === 'active'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-700/80 text-emerald-700 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-400/30'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/70'
+                }`}
+                title="Filter to show active subscriptions only"
+              >
+                <span className={`w-2 h-2 rounded-full ${statusFilter === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                <span>Active Only</span>
+                <span className={`text-[10px] font-mono px-1 rounded ${statusFilter === 'active' ? 'bg-emerald-100 dark:bg-emerald-900/60' : 'bg-slate-100 dark:bg-slate-700'}`}>
+                  {statusCounts.active}
+                </span>
+              </button>
+
+              {/* Reset Filters Button */}
+              {isFiltered && (
+                <button
+                  id="sub-reset-filters-btn"
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shrink-0"
+                  title="Reset all filters and search query"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Reset</span>
                 </button>
               )}
+
+              {/* Export Subscriptions Button */}
+              <button
+                id="sub-export-data-btn"
+                type="button"
+                onClick={() => setIsExportModalOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-2xs transition-all cursor-pointer shrink-0"
+                title="Export subscription data to downloadable JSON or CSV (Encrypted or Decrypted)"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Export</span>
+              </button>
             </div>
 
-            {/* Reset Filters Button (Top Row) */}
-            {isFiltered && (
+            {/* Quick Category Chips for 1-Click Filtering by Category */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar w-full text-xs">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
+                <Tag className="w-3 h-3 text-indigo-500" />
+                <span>Categories:</span>
+              </span>
               <button
-                id="sub-reset-filters-btn"
                 type="button"
-                onClick={handleResetFilters}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shrink-0"
-                title="Reset all filters and search query"
+                onClick={() => setCategoryFilter('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                  categoryFilter === 'all'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
               >
-                <RotateCcw className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Reset Filters</span>
+                All ({subscriptions.length})
               </button>
-            )}
-
-            {/* Export Subscriptions Button */}
-            <button
-              id="sub-export-data-btn"
-              type="button"
-              onClick={() => setIsExportModalOpen(true)}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-2xs transition-all cursor-pointer shrink-0"
-              title="Export subscription data to downloadable JSON or CSV (Encrypted or Decrypted)"
-            >
-              <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Export</span>
-            </button>
+              {CATEGORIES.map((cat) => {
+                const count = categoryCounts[cat] || 0;
+                const isSelected = categoryFilter === cat;
+                const catColor = CATEGORY_COLORS[cat] || '#6366F1';
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCategoryFilter(isSelected ? 'all' : cat)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer shrink-0 border ${
+                      isSelected
+                        ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-400 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300 font-bold shadow-xs'
+                        : 'bg-white dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: catColor }} />
+                    <span>{cat}</span>
+                    <span className="text-[10px] font-mono opacity-70">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Bottom Row: Filter Dropdowns */}
@@ -374,12 +550,29 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
             {/* Active search chip */}
             {searchQuery && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 font-medium text-[11px]">
-                <span>Search: "{searchQuery}"</span>
+                <span>
+                  Search {searchScope !== 'all' ? `(${searchScope})` : ''}: "{searchQuery}"
+                </span>
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
                   className="hover:text-indigo-900 dark:hover:text-white cursor-pointer"
                   title="Remove search filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+
+            {/* Active search scope chip if not all and query is empty */}
+            {!searchQuery && searchScope !== 'all' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 font-medium text-[11px]">
+                <span>Scope: {searchScope === 'name' ? 'Name Only' : 'Category Only'}</span>
+                <button
+                  type="button"
+                  onClick={() => setSearchScope('all')}
+                  className="hover:text-indigo-900 dark:hover:text-white cursor-pointer"
+                  title="Reset scope to all"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -468,23 +661,44 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
       {/* Mobile Card List (< 768px Viewport) */}
       <div className="block md:hidden space-y-3 w-full min-w-0">
         {filteredSubscriptions.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 space-y-2">
-            <p className="font-semibold text-slate-700 dark:text-slate-300">
-              {searchQuery ? `No subscriptions found matching "${searchQuery}"` : 'No subscriptions matched your filters'}
-            </p>
-            <p className="text-xs text-slate-400">
-              Try adjusting your search keywords, category, billing cycle, or status filters.
-            </p>
-            {isFiltered && (
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset All Filters</span>
-              </button>
-            )}
+          <div className="p-8 text-center rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 space-y-3">
+            <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800/80 mx-auto flex items-center justify-center text-indigo-500">
+              <Search className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 dark:text-slate-200">
+                {searchQuery
+                  ? `No subscriptions found matching "${searchQuery}"${statusFilter === 'active' ? ' among active subscriptions' : ''}`
+                  : 'No subscriptions matched your filters'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                {searchQuery
+                  ? `Try checking for spelling or switching the search scope (currently "${searchScope}").`
+                  : 'Try adjusting your category, billing cycle, or status filters.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Clear Search</span>
+                </button>
+              )}
+              {isFiltered && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset All Filters</span>
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           filteredSubscriptions.map((sub) => {
@@ -523,7 +737,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
                             ? 'text-slate-400'
                             : 'text-slate-900 dark:text-white'
                         }`}>
-                          {sub.name}
+                          {highlightMatch(sub.name, searchQuery)}
                         </span>
                         {isSimulated && (
                           <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-300">
@@ -546,7 +760,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: catColor }} />
-                          {sub.category}
+                          {highlightMatch(sub.category, searchQuery)}
                         </span>
                         {sub.trialExpiryDate && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30">
@@ -724,22 +938,41 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
               {filteredSubscriptions.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 px-4 text-center text-slate-500 dark:text-slate-400">
-                    <p className="font-semibold text-slate-700 dark:text-slate-300">
-                      {searchQuery ? `No subscriptions matched "${searchQuery}"` : 'No subscriptions matched your filters'}
+                    <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800/80 mx-auto flex items-center justify-center text-indigo-500 mb-3">
+                      <Search className="w-5 h-5" />
+                    </div>
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">
+                      {searchQuery
+                        ? `No subscriptions found matching "${searchQuery}"${statusFilter === 'active' ? ' among active subscriptions' : ''}`
+                        : 'No subscriptions matched your filters'}
                     </p>
                     <p className="text-xs mt-1 text-slate-400 dark:text-slate-500">
-                      Try adjusting your keywords, category, billing cycle, or status filters.
+                      {searchQuery
+                        ? `Try checking your spelling or changing the search scope (currently "${searchScope}").`
+                        : 'Try adjusting your keywords, category, billing cycle, or status filters.'}
                     </p>
-                    {isFiltered && (
-                      <button
-                        type="button"
-                        onClick={handleResetFilters}
-                        className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold transition-colors cursor-pointer"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Reset All Filters</span>
-                      </button>
-                    )}
+                    <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery('')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Clear Search</span>
+                        </button>
+                      )}
+                      {isFiltered && (
+                        <button
+                          type="button"
+                          onClick={handleResetFilters}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reset All Filters</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -782,7 +1015,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
                                     : 'text-slate-900 dark:text-white'
                                 }`}
                               >
-                                {sub.name}
+                                {highlightMatch(sub.name, searchQuery)}
                               </span>
                               {isSimulated && (
                                 <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-500/40 shrink-0">
@@ -800,7 +1033,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
                                 }}
                               >
                                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: catColor }} />
-                                {sub.category}
+                                {highlightMatch(sub.category, searchQuery)}
                               </span>
 
                               {sub.trialExpiryDate && (
