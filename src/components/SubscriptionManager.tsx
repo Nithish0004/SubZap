@@ -21,7 +21,8 @@ import {
   Calendar,
   Tag,
   RotateCcw,
-  Download
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { BillingCycle, Subscription, SubscriptionCategory } from '../types';
 import { CATEGORIES, CATEGORY_COLORS, getCountdownBadge, getDaysUntil, getNormalizedMonthlyCost } from '../utils/calculations';
@@ -30,6 +31,7 @@ import { BrandLogo } from './BrandLogo';
 import { MultiCurrencyTooltip } from './MultiCurrencyTooltip';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { ExportSubscriptionsModal } from './ExportSubscriptionsModal';
+import { exportCurrentSubscriptionsToCSV } from '../utils/export';
 
 interface SubscriptionManagerProps {
   subscriptions: Subscription[];
@@ -90,6 +92,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
 
   // Export Subscriptions Modal State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportToastMessage, setExportToastMessage] = useState<string | null>(null);
 
   const { formatBaseINR } = useCurrency();
 
@@ -258,8 +261,46 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
     }
   };
 
+  // Direct 1-click CSV export handler
+  const handleDirectCSVExport = () => {
+    const subsToExport = filteredSubscriptions.length > 0 ? filteredSubscriptions : subscriptions;
+    const isFilteredView = filteredSubscriptions.length !== subscriptions.length;
+    const prefix = isFilteredView ? 'subzap_filtered_subscriptions' : 'subzap_subscriptions_backup';
+    const { filename, count } = exportCurrentSubscriptionsToCSV(subsToExport, prefix);
+    setExportToastMessage(`Successfully exported ${count} subscriptions to "${filename}" for backup & external analysis.`);
+    setTimeout(() => setExportToastMessage(null), 4500);
+  };
+
   return (
     <div className="space-y-5 sm:space-y-6 animate-in fade-in duration-300 w-full min-w-0 max-w-full">
+      {/* Export Confirmation Toast Banner */}
+      {exportToastMessage && (
+        <div 
+          id="export-toast-banner"
+          className="flex items-center justify-between p-3.5 rounded-2xl bg-emerald-600 text-white shadow-xl text-xs font-semibold animate-in slide-in-from-top-2 duration-200 border border-emerald-500"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-white text-xs truncate">{exportToastMessage}</p>
+              <p className="text-[11px] text-emerald-100 font-normal truncate">
+                Includes normalized monthly burn, projected annual cost, renewal dates, days until renewal, and category classification.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportToastMessage(null)}
+            className="p-1.5 text-emerald-100 hover:text-white rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer shrink-0 ml-2"
+            aria-label="Dismiss export confirmation"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Search & Filter Header Bar */}
       <div className="space-y-3 w-full min-w-0">
         <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-sm w-full min-w-0 space-y-3.5">
@@ -382,16 +423,28 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
                 </button>
               )}
 
-              {/* Export Subscriptions Button */}
+              {/* Direct 1-Click Export CSV Button */}
+              <button
+                id="sub-export-csv-direct-btn"
+                type="button"
+                onClick={handleDirectCSVExport}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-200 dark:border-emerald-800/80 shadow-2xs transition-all cursor-pointer shrink-0"
+                title="Export current subscriptions list directly as a CSV file for Excel, Google Sheets & backup"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Export CSV</span>
+              </button>
+
+              {/* Advanced Export Options (JSON / Encryption) Button */}
               <button
                 id="sub-export-data-btn"
                 type="button"
                 onClick={() => setIsExportModalOpen(true)}
-                className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-2xs transition-all cursor-pointer shrink-0"
-                title="Export subscription data to downloadable JSON or CSV (Encrypted or Decrypted)"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 text-xs font-semibold border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-2xs transition-all cursor-pointer shrink-0"
+                title="Advanced export options: Encrypted AES-256 backup, JSON format, live preview"
               >
                 <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Export</span>
+                <span className="hidden sm:inline">Options</span>
               </button>
             </div>
 
@@ -637,12 +690,12 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
             <button
               id="sub-export-view-btn"
               type="button"
-              onClick={() => setIsExportModalOpen(true)}
-              className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 cursor-pointer transition-colors shadow-2xs"
-              title="Export subscriptions as JSON or CSV"
+              onClick={handleDirectCSVExport}
+              className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 cursor-pointer transition-colors shadow-2xs"
+              title="Download CSV spreadsheet of current subscription view for Excel, Google Sheets, or backup"
             >
-              <Download className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-              <span>Export {isFiltered ? `View (${filteredSubscriptions.length})` : 'All'}</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Export CSV {isFiltered ? `(${filteredSubscriptions.length})` : `(${subscriptions.length})`}</span>
             </button>
 
             {isFiltered && (

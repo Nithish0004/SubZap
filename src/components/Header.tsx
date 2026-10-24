@@ -20,7 +20,8 @@ import {
   X,
   Target,
   Laptop,
-  Download
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -35,6 +36,7 @@ interface HeaderProps {
   onOpenNotifications: () => void;
   onResetData: () => void;
   onOpenDataVault?: () => void;
+  onExportCSV?: () => void;
   unreadAlertsCount: number;
   totalSubsCount: number;
   currentMonthlyBurnINR: number;
@@ -47,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNotifications,
   onResetData,
   onOpenDataVault,
+  onExportCSV,
   unreadAlertsCount,
   totalSubsCount,
   currentMonthlyBurnINR,
@@ -318,17 +321,20 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>View Stored Data & Cloud Vault</span>
                   </button>
 
-                  <button
-                    id="header-dropdown-export-btn"
-                    onClick={() => {
-                      setShowUserDropdown(false);
-                      onOpenDataVault?.();
-                    }}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer font-medium"
-                  >
-                    <Download className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Export Data (JSON / CSV)</span>
-                  </button>
+                  {onExportCSV && (
+                    <button
+                      id="header-dropdown-export-csv-btn"
+                      onClick={() => {
+                        setShowUserDropdown(false);
+                        onExportCSV();
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer font-medium"
+                      title="Download subscriptions as CSV for external analysis and backup"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Export Subscriptions (CSV)</span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => {

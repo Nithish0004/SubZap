@@ -35,6 +35,7 @@ import { AuthGatewayModal } from './components/AuthGatewayModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { AuthLoadingSkeleton } from './components/AuthLoadingSkeleton';
 import { DataVaultModal } from './components/DataVaultModal';
+import { exportCurrentSubscriptionsToCSV } from './utils/export';
 
 export default function App() {
   const { user, userSecretKey, isLoading, needsOnboarding } = useAuth();
@@ -419,6 +420,9 @@ export default function App() {
         onOpenNotifications={() => setIsNotificationModalOpen(true)}
         onResetData={handleResetData}
         onOpenDataVault={() => setIsDataVaultOpen(true)}
+        onExportCSV={() => {
+          exportCurrentSubscriptionsToCSV(subscriptions);
+        }}
         unreadAlertsCount={alerts.length}
         totalSubsCount={subscriptions.length}
         currentMonthlyBurnINR={metrics.totalMonthlyBurn}

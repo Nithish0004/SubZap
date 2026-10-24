@@ -18,7 +18,9 @@ import {
   CalendarRange,
   HeartPulse,
   BarChart3,
-  TrendingUp
+  TrendingUp,
+  FileSpreadsheet,
+  X
 } from 'lucide-react';
 import { AnalyticsMetrics, Subscription } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
@@ -31,6 +33,7 @@ import { MonthlySpendTrendChart } from './MonthlySpendTrendChart';
 import { MonthlySpendBarChart } from './MonthlySpendBarChart';
 import { SubscriptionHealthScoreCard } from './SubscriptionHealthScoreCard';
 import { getCountdownBadge, getDaysUntil, calculateSubscriptionHealthScore } from '../utils/calculations';
+import { exportCurrentSubscriptionsToCSV } from '../utils/export';
 
 interface AnalyticsHubProps {
   metrics: AnalyticsMetrics;
@@ -55,6 +58,13 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
   const { userProfile, setNeedsOnboarding } = useAuth();
   const [projectionMode, setProjectionMode] = useState<'monthly' | 'annual'>('monthly');
   const [trendChartType, setTrendChartType] = useState<'bar' | 'line'>('bar');
+  const [hubExportToast, setHubExportToast] = useState<string | null>(null);
+
+  const handleExportCSV = () => {
+    const { filename, count } = exportCurrentSubscriptionsToCSV(subscriptions, 'subzap_analytics_export');
+    setHubExportToast(`Successfully exported ${count} subscriptions to "${filename}" for backup & external analysis.`);
+    setTimeout(() => setHubExportToast(null), 4000);
+  };
 
   const isAnnual = projectionMode === 'annual';
 
@@ -94,6 +104,33 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300 w-full min-w-0 max-w-full">
+      {/* Toast Notification Banner for CSV Export */}
+      {hubExportToast && (
+        <div 
+          id="hub-export-toast"
+          className="flex items-center justify-between p-3.5 rounded-2xl bg-emerald-600 text-white shadow-xl text-xs font-semibold animate-in slide-in-from-top-2 duration-200 border border-emerald-500"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-white text-xs truncate">{hubExportToast}</p>
+              <p className="text-[11px] text-emerald-100 font-normal truncate">
+                Includes normalized monthly burn, projected annual cost, renewal dates, days until renewal & category tags.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHubExportToast(null)}
+            className="p-1.5 text-emerald-100 hover:text-white rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer shrink-0 ml-2"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Welcome / Mission Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-100 via-indigo-50/50 to-slate-100 dark:from-slate-900 dark:via-indigo-950/40 dark:to-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm transition-colors w-full min-w-0">
         <div className="min-w-0">
@@ -125,6 +162,18 @@ export const AnalyticsHub: React.FC<AnalyticsHubProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          {/* Quick Export CSV Button */}
+          <button
+            id="hub-export-csv-btn"
+            type="button"
+            onClick={handleExportCSV}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/80 rounded-xl shadow-xs transition-all cursor-pointer"
+            title="Export all subscriptions as CSV file for Excel, Google Sheets & external analysis"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="truncate">Export CSV</span>
+          </button>
+
           <button
             onClick={() => setNeedsOnboarding(true)}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/60 rounded-xl transition-colors cursor-pointer"

@@ -1,6 +1,11 @@
 import { Subscription } from '../types';
 import { encryptField, encryptSubscription } from './crypto';
-import { getNormalizedMonthlyCost, getNormalizedAnnualCost } from './calculations';
+import { 
+  getNormalizedMonthlyCost, 
+  getNormalizedAnnualCost, 
+  getDaysUntil, 
+  getCountdownBadge 
+} from './calculations';
 
 /**
  * Triggers a client-side file download via a dynamically generated Blob
@@ -34,9 +39,12 @@ export function generateSubscriptionsCSV(subscriptions: Subscription[]): string 
     'Category',
     'Status',
     'Next Renewal Date',
+    'Days Until Renewal',
+    'Renewal Urgency',
     'Free Trial Expiry',
     'Domain',
     'Previous Price',
+    'Price Surge Percentage',
     'Notes',
     'Cancellation URL',
     'Created At',
@@ -55,6 +63,11 @@ export function generateSubscriptionsCSV(subscriptions: Subscription[]): string 
   const rows = subscriptions.map((sub) => {
     const monthlyNormalized = Math.round(getNormalizedMonthlyCost(sub.cost, sub.billingCycle) * 100) / 100;
     const annualNormalized = Math.round(getNormalizedAnnualCost(sub.cost, sub.billingCycle) * 100) / 100;
+    const daysUntilRenewal = getDaysUntil(sub.nextRenewalDate);
+    const urgency = getCountdownBadge(sub.nextRenewalDate).label;
+    const surgePercent = sub.previousCost && sub.cost > sub.previousCost
+      ? `${Math.round(((sub.cost - sub.previousCost) / sub.previousCost) * 100)}%`
+      : '';
 
     return [
       sub.id,
@@ -67,9 +80,12 @@ export function generateSubscriptionsCSV(subscriptions: Subscription[]): string 
       sub.category,
       sub.isPaused ? 'Paused' : 'Active',
       sub.nextRenewalDate,
+      daysUntilRenewal,
+      urgency,
       sub.trialExpiryDate || '',
       sub.domain || '',
       sub.previousCost !== undefined ? sub.previousCost : '',
+      surgePercent,
       sub.notes || '',
       sub.cancellationUrl || '',
       sub.createdAt || '',
@@ -81,6 +97,21 @@ export function generateSubscriptionsCSV(subscriptions: Subscription[]): string 
 
   // \uFEFF is UTF-8 Byte Order Mark
   return '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+}
+
+/**
+ * Direct 1-click helper to export the current list of subscriptions as an RFC-4180 CSV file
+ * Formatted with UTF-8 BOM for Microsoft Excel, Google Sheets, Apple Numbers, and external financial tools.
+ */
+export function exportCurrentSubscriptionsToCSV(
+  subscriptions: Subscription[],
+  filenamePrefix: string = 'subzap_subscriptions_backup'
+): { success: boolean; filename: string; count: number } {
+  const dateSlug = new Date().toISOString().slice(0, 10);
+  const filename = `${filenamePrefix}_${dateSlug}.csv`;
+  const content = generateSubscriptionsCSV(subscriptions);
+  triggerDownload(content, filename, 'text/csv');
+  return { success: true, filename, count: subscriptions.length };
 }
 
 /**
